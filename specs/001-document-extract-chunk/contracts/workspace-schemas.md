@@ -241,6 +241,8 @@
 
 ## linkage.json
 
+每个 `outline.json` 节点 MUST 有一条 entry（`flat_fallback` 单节点文档例外）。无对应 chunk 时 `chunk_ids` 为空数组，`document_tree_node_ids` 仍须非空。
+
 ```json
 {
   "schema_version": "1.0",
@@ -276,6 +278,17 @@
   ]
 }
 ```
+
+---
+
+## blocks_v1 导出（适配层）
+
+`doc_chunk.convert.blocks_to_v1_json` 将 `chunk.blocks` 转为 tender_knowledge 可消费的 `blocks_v1` JSON：
+
+- 无 `asset_id` 映射：`{"type":"image","image_ref":"images/..."}`
+- 有映射（推荐）：`{"type":"image","asset_id":"<uuid>","image_ref":"images/..."}`
+
+工作区 `chunk-*.json` 内 `blocks[]` 仍使用 `image_ref`；`asset_id` 由适配层在落库前通过 `images/manifest.json` 注入 `image_ref_to_asset_id` 映射生成。
 
 ---
 

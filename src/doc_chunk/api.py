@@ -16,18 +16,19 @@ from doc_chunk.llm.client import LLMClient
 from doc_chunk.llm.openai_client import create_llm_client_from_env
 from doc_chunk.metadata.classify import classify_chunk
 from doc_chunk.metadata.describe import describe_chunk
-from doc_chunk.models.chunk import ChunkIndex, ContentChunk
+from doc_chunk.models.chunk import ChunkIndex, ChunkIndexEntry, ContentChunk
 from doc_chunk.models.content_block import ContentBlocksFile
 from doc_chunk.models.document import PipelineResult
 from doc_chunk.models.document_tree import DocumentTreeFile
 from doc_chunk.models.manifest import Manifest, SourceInfo, StageStatus
+from doc_chunk.models.linkage import LinkageFile
 from doc_chunk.models.outline import OutlineMappingFile, OutlineTree
 from doc_chunk.outline.builder import build_outline_from_workspace
 from doc_chunk.outline_refine.engine import OutlineRefineEngine
 from doc_chunk.outline_refine.persist import clear_refined_artifacts, persist_refined_artifacts
 from doc_chunk.outline_refine.session import RefineSession
 from doc_chunk.linkage.builder import build_linkage
-from doc_chunk.tree.builder import build_document_tree
+from doc_chunk.tree.builder import build_document_tree_with_warnings
 from doc_chunk.workspace.layout import OutputWorkspace
 from doc_chunk.workspace.manifest_io import load_manifest, save_manifest
 
@@ -87,27 +88,77 @@ def build_tree(workspace: Path) -> DocumentTreeFile:
     blocks = ContentBlocksFile.model_validate_json(ws.content_blocks_path.read_text(encoding="utf-8"))
     outline = OutlineTree.model_validate_json(ws.outline_path.read_text(encoding="utf-8"))
     content_md = ws.content_path.read_text(encoding="utf-8")
-    tree = build_document_tree(blocks, outline, content_md=content_md)
+    tree, tree_warnings = build_document_tree_with_warnings(blocks, outline, content_md=content_md)
     ws.document_tree_path.write_text(tree.model_dump_json(indent=2), encoding="utf-8")
 
     if ws.manifest_path.exists():
         manifest = load_manifest(ws.manifest_path)
         manifest.stages["tree"] = StageStatus(status="success")
         manifest.outputs["document_tree"] = "document_tree.json"
+        for warning in tree_warnings:
+            if warning not in manifest.warnings:
+                manifest.warnings.append(warning)
         save_manifest(ws, manifest)
     return tree
 
 
-def _write_linkage(ws: OutputWorkspace, outline: OutlineTree, chunks: list[ContentChunk], outline_source: str) -> None:
+def _write_linkage(ws: OutputWorkspace, outline: OutlineTree, chunks: list[ContentChunk], outline_source: str) -> LinkageFile:
     if not ws.document_tree_path.exists():
-        return
+        raise WorkspaceError("document_tree.json required for linkage")
     document_tree = DocumentTreeFile.model_validate_json(ws.document_tree_path.read_text(encoding="utf-8"))
-    linkage = build_linkage(outline, document_tree, chunks, outline_source=outline_source)
+    result = build_linkage(
+        outline,
+        document_tree,
+        chunks,
+        outline_source=outline_source,
+        collect_warnings=True,
+    )
+    linkage, linkage_warnings = result  # type: ignore[misc]
     ws.linkage_path.write_text(linkage.model_dump_json(indent=2), encoding="utf-8")
     if ws.manifest_path.exists():
         manifest = load_manifest(ws.manifest_path)
         manifest.outputs["linkage"] = "linkage.json"
+        for warning in linkage_warnings:
+            if warning not in manifest.warnings:
+                manifest.warnings.append(warning)
         save_manifest(ws, manifest)
+    return linkage
+
+
+def _populate_chunk_index_tree_nodes(index: ChunkIndex, linkage: LinkageFile) -> list[str]:
+    warnings: list[str] = []
+    by_outline = {entry.outline_node_id: entry for entry in linkage.entries}
+    updated: list[ChunkIndexEntry] = []
+    for entry in index.chunks:
+        if entry.heading_level is None:
+            updated.append(entry)
+            continue
+        outline_id = entry.primary_outline_node_id or (
+            entry.original_node_ids[0] if entry.original_node_ids else None
+        )
+        if not outline_id:
+            updated.append(entry)
+            continue
+        link = by_outline.get(outline_id)
+        if not link or not link.document_tree_node_ids:
+            updated.append(entry)
+            continue
+        expected = link.document_tree_node_ids[0]
+        if entry.document_tree_node_id and entry.document_tree_node_id != expected:
+            warnings.append(f"chunk_tree_node_mismatch:{entry.chunk_id}")
+        updated.append(entry.model_copy(update={"document_tree_node_id": expected}))
+    index.chunks = updated
+    return warnings
+
+
+def _append_manifest_warnings(ws: OutputWorkspace, warnings: list[str]) -> None:
+    if not warnings or not ws.manifest_path.exists():
+        return
+    manifest = load_manifest(ws.manifest_path)
+    for warning in warnings:
+        if warning not in manifest.warnings:
+            manifest.warnings.append(warning)
+    save_manifest(ws, manifest)
 
 
 def _safe_progress(
@@ -327,7 +378,16 @@ def chunk_document(
     index = write_chunks(chunks, ws.chunks_dir, outline_source=outline_source)
 
     if outline_tree is not None:
-        _write_linkage(ws, outline_tree, chunks, outline_source)
+        if not ws.document_tree_path.exists():
+            build_tree(ws.root)
+        linkage = _write_linkage(ws, outline_tree, chunks, outline_source)
+        index_warnings = _populate_chunk_index_tree_nodes(index, linkage)
+        index_path = ws.chunks_dir / "index.json"
+        index_path.write_text(
+            json.dumps(index.model_dump(mode="json"), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        _append_manifest_warnings(ws, index_warnings)
 
     if ws.manifest_path.exists():
         manifest = load_manifest(ws.manifest_path)

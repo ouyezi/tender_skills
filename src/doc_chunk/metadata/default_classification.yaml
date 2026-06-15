@@ -26,3 +26,21 @@ labels:
   other:
     chapter_type: "其他"
     keywords: []
+  ignore:
+    chapter_type: "忽略"
+    keywords:
+      - 目录
+      - 封面
+      - 封皮
+
+chapter_taxonomies:
+  - aliases: ["技术方案", "系统设计", "实施方案", "系统架构"]
+    hint: "技术方案"
+  - aliases: ["资质", "资格", "业绩证明", "公司业绩"]
+    hint: "资质证明"
+  - aliases: ["服务承诺", "应急预案", "食品安全", "服务方案"]
+    hint: "服务方案"
+  - aliases: ["产品", "功能", "技术参数", "产品能力"]
+    hint: "产品能力"
+  - aliases: ["目录", "封面", "封皮"]
+    hint: "目录"

@@ -76,11 +76,12 @@ def suggest_candidate_types(
     for rule in load_candidate_rules(classification_config):
         rule_hints = set(rule.get("taxonomy_hints", []))
         if hint_set & rule_hints:
-            result: dict[str, str] = {}
+            result: dict[str, Any] = {}
             if rule.get("suggested_candidate_type"):
                 result["suggested_candidate_type"] = str(rule["suggested_candidate_type"])
-            if rule.get("suggested_knowledge_type"):
-                result["suggested_knowledge_type"] = str(rule["suggested_knowledge_type"])
+            if "suggested_knowledge_type" in rule:
+                knowledge_type = rule.get("suggested_knowledge_type")
+                result["suggested_knowledge_type"] = None if knowledge_type is None else str(knowledge_type)
             if result:
                 return result
     return {}

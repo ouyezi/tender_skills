@@ -7,7 +7,27 @@ from typing import Any
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.metadata.rules import load_classification_rules, match_hint_aliases, suggest_candidate_types
 
-BUILTIN_TYPES = {"scheme", "product", "qualification", "other"}
+BUILTIN_TYPES = {"scheme", "product", "qualification", "other", "ignore"}
+DIRECT_CANDIDATE_MAP = {
+    "scheme": ("scheme", "scheme"),
+    "product": ("product", "product"),
+    "qualification": ("qualification", "qualification"),
+    "ignore": ("ignore", None),
+}
+
+
+def _apply_direct_candidate_mapping(result: dict[str, Any]) -> dict[str, Any]:
+    label = str(result.get("knowledge_type", ""))
+    mapping = DIRECT_CANDIDATE_MAP.get(label)
+    if mapping is None:
+        return result
+    candidate_type, knowledge_type = mapping
+    result.setdefault("suggested_candidate_type", candidate_type)
+    if knowledge_type is not None:
+        result.setdefault("suggested_knowledge_type", knowledge_type)
+    else:
+        result.setdefault("suggested_knowledge_type", None)
+    return result
 
 
 def _attach_candidate_suggestions(result: dict[str, Any], classification_config: Any) -> dict[str, Any]:
@@ -93,7 +113,7 @@ def classify_chunk(
             result["product_category_hints"] = product_hints
         if taxonomy_hints:
             result["chapter_taxonomy_hints"] = taxonomy_hints
-        return _attach_candidate_suggestions(result, classification_config)
+        return _attach_candidate_suggestions(_apply_direct_candidate_mapping(result), classification_config)
 
     llm_result = _llm_classify(text, llm_client)
     if llm_result is not None:
@@ -109,7 +129,7 @@ def classify_chunk(
             result["product_category_hints"] = product_hints
         if taxonomy_hints:
             result["chapter_taxonomy_hints"] = taxonomy_hints
-        return _attach_candidate_suggestions(result, classification_config)
+        return _attach_candidate_suggestions(_apply_direct_candidate_mapping(result), classification_config)
 
     result = {
         "knowledge_type": "other",
@@ -122,4 +142,4 @@ def classify_chunk(
         result["product_category_hints"] = product_hints
     if taxonomy_hints:
         result["chapter_taxonomy_hints"] = taxonomy_hints
-    return _attach_candidate_suggestions(result, classification_config)
+    return _attach_candidate_suggestions(_apply_direct_candidate_mapping(result), classification_config)
