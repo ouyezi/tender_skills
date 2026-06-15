@@ -1,0 +1,11 @@
+---
+alwaysApply: true
+---
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read:
+- Plan: `specs/001-document-extract-chunk/plan.md`
+- **完整需求**: `docs/superpowers/specs/2026-06-15-doc-chunk-requirements.md`
+- Spec index: `specs/001-document-extract-chunk/spec.md`
+<!-- SPECKIT END -->

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doc-chunk"
+version = "0.1.0"
+description = "Word/PDF extraction, outline, chunking for tender skills"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.10.0",
+  "python-docx>=1.1.0",
+  "lxml>=5.0.0",
+  "pymupdf>=1.24.0",
+  "pyyaml>=6.0.0",
+  "typer>=0.15.0",
+  "jsonschema>=4.0.0",
+  "openai>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5.0"]
+
+[project.scripts]
+doc-chunk = "doc_chunk.cli.main:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

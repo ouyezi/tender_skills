@@ -1,0 +1,28 @@
+labels:
+  scheme:
+    chapter_type: "政策方案"
+    keywords:
+      - 政策
+      - 方案
+      - 采购
+      - 招标
+      - 要求
+  product:
+    chapter_type: "产品能力"
+    keywords:
+      - 产品
+      - 设备
+      - 技术参数
+      - 功能
+      - 规格
+  qualification:
+    chapter_type: "资质证明"
+    keywords:
+      - 资质
+      - 证书
+      - 业绩
+      - 经验
+      - 团队
+  other:
+    chapter_type: "其他"
+    keywords: []

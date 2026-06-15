@@ -1,0 +1,26 @@
+product_categories:
+  - aliases: ["餐补", "福利餐", "百福得", "美食汇"]
+    hint: "餐补平台"
+  - aliases: ["福利商城", "自营商城"]
+    hint: "福利商城"
+
+chapter_taxonomies:
+  - aliases: ["技术方案", "系统设计", "实施方案", "系统架构"]
+    hint: "技术方案"
+  - aliases: ["资质", "资格", "业绩证明", "公司业绩"]
+    hint: "资质证明"
+  - aliases: ["服务承诺", "应急预案", "食品安全"]
+    hint: "服务方案"
+  - aliases: ["产品", "功能", "技术参数"]
+    hint: "产品能力"
+
+rules:
+  - taxonomy_hints: ["技术方案", "服务方案"]
+    suggested_candidate_type: scheme
+    suggested_knowledge_type: scheme
+  - taxonomy_hints: ["产品能力"]
+    suggested_candidate_type: product
+    suggested_knowledge_type: product
+  - taxonomy_hints: ["资质证明"]
+    suggested_candidate_type: qualification
+    suggested_knowledge_type: qualification

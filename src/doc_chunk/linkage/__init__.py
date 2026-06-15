@@ -1,0 +1,1 @@
+"""Linkage artifact builder."""

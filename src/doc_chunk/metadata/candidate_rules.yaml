@@ -1,0 +1,10 @@
+rules:
+  - taxonomy_hints: ["技术方案", "实施方案", "系统设计"]
+    suggested_candidate_type: scheme
+    suggested_knowledge_type: scheme
+  - taxonomy_hints: ["产品能力", "技术参数"]
+    suggested_candidate_type: product
+    suggested_knowledge_type: product
+  - taxonomy_hints: ["资质证明", "资格文件"]
+    suggested_candidate_type: qualification
+    suggested_knowledge_type: qualification

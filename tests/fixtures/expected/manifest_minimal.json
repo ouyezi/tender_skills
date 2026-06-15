@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "status": "success",
+  "source": {
+    "path": "/tmp/a.docx",
+    "file_name": "a.docx",
+    "file_type": "docx"
+  },
+  "stages": {},
+  "outputs": {},
+  "warnings": [],
+  "errors": []
+}
