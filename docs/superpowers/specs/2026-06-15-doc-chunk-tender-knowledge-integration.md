@@ -2,8 +2,9 @@
 
 **版本**: 1.0  
 **日期**: 2026-06-15  
-**状态**: 草案  
+**状态**: 主体已实现（见 003 集成修复）  
 **Feature ID**: `002-doc-chunk-tender-knowledge-integration`  
+**后续修复**: [`2026-06-15-doc-chunk-tk-integration-fixes.md`](./2026-06-15-doc-chunk-tk-integration-fixes.md)（`003`）  
 **前置特性**: [`2026-06-15-doc-chunk-requirements.md`](./2026-06-15-doc-chunk-requirements.md)（v1 基线）  
 **消费方**: `tender_knowledge` 实标解析流水线（`actual_bid_parse_runner`）及下游确认向导
 
@@ -495,6 +496,9 @@ P2（可选）
 ---
 
 ## 9. 验收标准（特性完成定义）
+
+> **2026-06-15 复核**：锚点分块、blocks、linkage、tree、manifest 已实现；餐补样例 outline/chunk 对齐。  
+> **待 003 修复**：`document_tree` 节点 ID 唯一性、outline→tree heading 全覆盖。见 [`2026-06-15-doc-chunk-tk-integration-fixes.md`](./2026-06-15-doc-chunk-tk-integration-fixes.md)。
 
 1. 餐补标书样例：`outline` 节点数与「主 chunk」数比例在 `[0.8, 1.2]`（排除 Preface 与续切块）
 2. 合成无 Heading docx：US1 全部通过

@@ -8,3 +8,6 @@ rules:
   - taxonomy_hints: ["资质证明", "资格文件"]
     suggested_candidate_type: qualification
     suggested_knowledge_type: qualification
+  - taxonomy_hints: ["目录", "封面"]
+    suggested_candidate_type: ignore
+    suggested_knowledge_type: null
