@@ -352,9 +352,23 @@ python -m pytest tests/unit tests/contract -v
 
 ---
 
+## Viewer（调试 UI）
+
+独立附属应用 `viewer/`，供本机上传/打开工作区、浏览 outline 树与章节 Markdown（左侧目录 + 右侧原文）。
+
+```bash
+pip install -e "./viewer[dev]"
+python -m viewer
+# → http://127.0.0.1:8765
+```
+
+详见 [`viewer/README.md`](viewer/README.md)。
+
+---
+
 ## 限制（v1）
 
-- 无 Web UI
+- 无生产级 Web UI（仅有本机调试 viewer）
 - 提取阶段无图片 OCR / 视觉 LLM
 - 不写入 tender_knowledge 数据库
 - `.doc` / `.docm` 不直接提取，需先转为 `.docx`

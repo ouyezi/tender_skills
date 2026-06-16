@@ -29,3 +29,7 @@ output/
 .DS_Store
 .idea/
 .vscode/
+
+# Viewer / brainstorming local data
+.doc-chunk-viewer/
+.superpowers/

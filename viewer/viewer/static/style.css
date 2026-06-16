@@ -1,0 +1,206 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: #1a1a1a;
+  background: #f5f5f5;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.top-bar {
+  flex-shrink: 0;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  padding: 0.5rem 0.75rem;
+}
+
+.top-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.upload-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.open-workspace {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+#open-path {
+  flex: 1;
+  min-width: 160px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+#session-select {
+  min-width: 220px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
+
+button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #f0f0f0;
+}
+
+.progress-bar {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: #e8f4fc;
+  border: 1px solid #b8d4e8;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #0c4a6e;
+}
+
+.progress-bar[hidden] {
+  display: none;
+}
+
+.main-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.outline-aside {
+  width: 30%;
+  min-width: 200px;
+  max-width: 420px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-right: 1px solid #ddd;
+}
+
+.content-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #fff;
+}
+
+.meta-bar {
+  flex-shrink: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  color: #555;
+  background: #fafafa;
+  border-bottom: 1px solid #eee;
+}
+
+.outline-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 0.35rem 0;
+}
+
+.content-panel {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem 1.25rem;
+  line-height: 1.6;
+}
+
+.outline-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outline-tree li {
+  margin: 0;
+}
+
+.tree-node {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.tree-node:hover {
+  background: #f0f4f8;
+}
+
+.tree-node.active {
+  background: #dbeafe;
+  font-weight: 500;
+}
+
+.content-panel img {
+  max-width: 100%;
+  height: auto;
+}
+
+.content-panel h1,
+.content-panel h2,
+.content-panel h3,
+.content-panel h4 {
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.content-panel h1:first-child,
+.content-panel h2:first-child {
+  margin-top: 0;
+}
+
+.content-panel pre {
+  overflow: auto;
+  padding: 0.75rem;
+  background: #f4f4f4;
+  border-radius: 4px;
+}
+
+.content-panel table {
+  border-collapse: collapse;
+  max-width: 100%;
+}
+
+.content-panel th,
+.content-panel td {
+  border: 1px solid #ddd;
+  padding: 0.35rem 0.5rem;
+}
