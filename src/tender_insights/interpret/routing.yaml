@@ -1,0 +1,8 @@
+disqualification:
+  keywords: ["投标人须知", "废标", "否决", "无效投标"]
+scoring:
+  keywords: ["评标", "评分", "分值", "评审办法"]
+bid_risk:
+  keywords: ["须知", "资格", "符合性", "实质性"]
+directory:
+  keywords: ["投标文件格式", "文件组成", "目录", "编制要求"]
