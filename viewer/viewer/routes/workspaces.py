@@ -1,3 +1,36 @@
-from fastapi import APIRouter
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
+
+from viewer.deps import get_session_store
+from viewer.models import OpenWorkspaceRequest, SessionRecord
+from viewer.services.workspace import validate_workspace
 
 router = APIRouter(tags=["workspaces"])
+
+
+@router.post("/workspaces/open")
+def open_workspace(body: OpenWorkspaceRequest) -> dict:
+    try:
+        workspace = validate_workspace(Path(body.path))
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    now = datetime.now(UTC).isoformat()
+    session_id = str(uuid.uuid4())
+    record = SessionRecord(
+        id=session_id,
+        title=workspace.name,
+        workspace_path=str(workspace),
+        source_type="open",
+        status="success",
+        created_at=now,
+        opened_at=now,
+        error=None,
+    )
+    get_session_store().add(record)
+    return {"session_id": session_id, "status": "success"}
