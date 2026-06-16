@@ -26,3 +26,13 @@ def sample_docx(tmp_path: Path) -> Path:
 def viewer_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("DOC_CHUNK_VIEWER_DATA", str(tmp_path))
     return tmp_path
+
+
+@pytest.fixture
+def pipeline_workspace(sample_docx: Path, tmp_path: Path) -> Path:
+    from doc_chunk.api import run_pipeline
+
+    workspace = tmp_path / "workspace"
+    result = run_pipeline(sample_docx, workspace, overwrite=True, skip_refine=True, skip_enrich=True)
+    assert result.status == "success"
+    return workspace
