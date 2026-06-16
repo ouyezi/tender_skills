@@ -33,3 +33,6 @@ output/
 # Viewer / brainstorming local data
 .doc-chunk-viewer/
 .superpowers/
+
+# Git worktrees (local only)
+.worktrees/
