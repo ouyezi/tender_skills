@@ -25,12 +25,13 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-模版分类可能调用 LLM（规则优先）。建议配置：
+模版分类可能调用 LLM（规则优先）。建议配置（默认千问）：
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export OPENAI_API_BASE=https://api.openai.com/v1   # 可选
-export DOC_CHUNK_LLM_MODEL=gpt-4o-mini              # 可选
+export LLM_PROVIDER=qwen
+export LLM_API_KEY=sk-...
+export LLM_BASE_URL=
+export LLM_MODEL=qwen3.6-plus
 ```
 
 > **`--no-llm` 说明**：CLI 无 `--no-llm`。测试请用 Python API + `FakeLLMClient` 注入。**生产环境勿跳过 LLM**（若 classifier 走 LLM 兜底）。

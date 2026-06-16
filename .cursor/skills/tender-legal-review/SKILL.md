@@ -35,12 +35,13 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-**需要 LLM API Key**：
+**需要 LLM API Key**（默认千问）：
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export OPENAI_API_BASE=https://api.openai.com/v1   # 可选
-export DOC_CHUNK_LLM_MODEL=gpt-4o-mini              # 可选
+export LLM_PROVIDER=qwen
+export LLM_API_KEY=sk-...
+export LLM_BASE_URL=
+export LLM_MODEL=qwen3.6-plus
 ```
 
 > **`--no-llm` 说明**：CLI 无 `--no-llm`。测试请用 Python API + `FakeLLMClient`。**生产法务审核必须走 LLM**。

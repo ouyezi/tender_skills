@@ -25,13 +25,16 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-**需要 LLM API Key**（解读阶段调用大模型）：
+**需要 LLM API Key**（解读阶段调用大模型，默认千问）：
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export OPENAI_API_BASE=https://api.openai.com/v1   # 可选，兼容 OpenAI 的网关
-export DOC_CHUNK_LLM_MODEL=gpt-4o-mini              # 可选，默认 gpt-4o-mini
+export LLM_PROVIDER=qwen
+export LLM_API_KEY=sk-...
+export LLM_BASE_URL=                    # 留空则用 DashScope 兼容端点
+export LLM_MODEL=qwen3.6-plus
 ```
+
+可与 `tender_knowledge/.env` 共用；或 `set -a && source /path/to/tender_knowledge/.env && set +a`。
 
 > **`--no-llm` / FakeLLM 说明**：`tender-insights` CLI 无 `--no-llm` 开关。测试与 CI 请通过 Python API 注入 `FakeLLMClient`（见 `doc_chunk.llm.client`），**不要在生产流程中跳过 LLM**。
 

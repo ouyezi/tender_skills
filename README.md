@@ -289,11 +289,23 @@ run_pipeline(
 
 目录优化（`refine`）与元数据 LLM 描述（`enrich` 默认开启时）需要大模型；**提取、目录树、文档树、分块不需要**。
 
+与 `tender_knowledge` 共用环境变量（默认 **千问 Qwen** 兼容 OpenAI 接口）：
+
 ```bash
-export OPENAI_API_KEY=sk-...
-export OPENAI_API_BASE=https://api.openai.com/v1   # 可选，兼容 OpenAI 的网关
-export DOC_CHUNK_LLM_MODEL=gpt-4o-mini              # 可选，默认 gpt-4o-mini
+export LLM_PROVIDER=qwen
+export LLM_API_KEY=sk-...
+export LLM_BASE_URL=                    # 留空则用 DashScope 兼容端点
+export LLM_MODEL=qwen3.6-plus           # 留空则 qwen-plus
 ```
+
+或复制 `tender_knowledge/.env` 后 `set -a && source .env && set +a`。
+
+| 变量 | 默认（`LLM_PROVIDER=qwen`） |
+|------|---------------------------|
+| `LLM_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `LLM_MODEL` | `qwen-plus` |
+
+仍支持旧变量：`OPENAI_API_KEY`、`OPENAI_API_BASE`、`DOC_CHUNK_LLM_MODEL`。
 
 | 场景 | 无 API Key 时 |
 |------|----------------|
@@ -383,13 +395,16 @@ python -m pytest tests/tender_insights/ -v
 
 ### LLM 配置
 
-解读与法务阶段需要大模型；模版分类规则优先、LLM 兜底：
+解读与法务阶段需要大模型；模版分类规则优先、LLM 兜底。默认使用 **千问（Qwen）**：
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export OPENAI_API_BASE=https://api.openai.com/v1   # 可选
-export DOC_CHUNK_LLM_MODEL=gpt-4o-mini              # 可选
+export LLM_PROVIDER=qwen
+export LLM_API_KEY=sk-...
+export LLM_BASE_URL=                    # 留空 → DashScope 兼容端点
+export LLM_MODEL=qwen3.6-plus           # 与 tender_knowledge 一致
 ```
+
+可与 `tender_knowledge` 共用同一 `.env`（`LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL`）。
 
 ### Python API
 
