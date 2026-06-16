@@ -325,6 +325,106 @@ doc-chunk enrich ./out --classification-config ./my_classification.yaml
 
 ---
 
+## tender_insights（招标语义分析）
+
+在 `doc_chunk` 工作区之上，`tender_insights` 包提供招标业务语义分析：解读（废标/得分/投标风险/目录）、模版提取、法务审核。输出稳定 JSON（`schema_version: 1.0`），供 agent 与下游系统消费。
+
+**设计文档：** [`docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md`](docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md)
+
+### 安装
+
+与 `doc_chunk` 共用同一虚拟环境：
+
+```bash
+cd tender_skills
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+验证：
+
+```bash
+tender-insights --help
+python -m pytest tests/tender_insights/ -v
+```
+
+### 快速开始
+
+输入支持 **工作区目录** 或 **原始 `.docx`/`.pdf`**（后者自动调用 `doc-chunk pipeline`）。
+
+```bash
+# 解读：废标项、得分项、投标风险、目录要求
+.venv/bin/tender-insights interpret /path/to/bid.docx \
+  -o ./output/my-bid \
+  --overwrite
+
+# 模版：承诺书、授权书、声明函等
+.venv/bin/tender-insights template ./output/my-bid
+
+# 法务：合规风险 + 待确认事项（独立于 interpret）
+.venv/bin/tender-insights legal ./output/my-bid
+
+# 一次性跑 interpret + template + legal
+.venv/bin/tender-insights all /path/to/bid.docx -o ./output/my-bid --overwrite
+```
+
+### 产出文件
+
+| 命令 | 产物 | 说明 |
+|------|------|------|
+| `interpret` | `interpretation.json` | 废标项、得分项、`bid_risk_items`（投标视角）、目录要求 |
+| `template` | `templates/index.json` + `templates/*.md` | 嵌入正文模版切片 |
+| `legal` | `legal_review.json` | `risk_items`（法务合规）+ `pending_confirmations` |
+
+工作区 `manifest.json` 会追加对应 `stages` 与 `outputs` 条目。
+
+> **风险字段区分：** `interpretation.json` 的 `bid_risk_items` 是投标执行视角；`legal_review.json` 的 `risk_items` 是法务合规视角。两套分析独立运行，互不读取。
+
+### LLM 配置
+
+解读与法务阶段需要大模型；模版分类规则优先、LLM 兜底：
+
+```bash
+export OPENAI_API_KEY=sk-...
+export OPENAI_API_BASE=https://api.openai.com/v1   # 可选
+export DOC_CHUNK_LLM_MODEL=gpt-4o-mini              # 可选
+```
+
+### Python API
+
+```python
+from pathlib import Path
+from tender_insights.api import (
+    resolve_workspace_path,
+    interpret_document,
+    extract_templates,
+    review_legal,
+)
+
+ws = resolve_workspace_path(
+    Path("/path/to/bid.docx"),
+    output_dir=Path("./output/my-bid"),
+    overwrite=True,
+)
+interpret_document(ws)
+extract_templates(ws)
+review_legal(ws)
+```
+
+测试时可注入 `FakeLLMClient`（见 `doc_chunk.llm.client`）。
+
+### Cursor Skills 索引
+
+| Skill | 路径 | CLI |
+|-------|------|-----|
+| 提取 | [`.cursor/skills/tender-extract/SKILL.md`](.cursor/skills/tender-extract/SKILL.md) | `doc-chunk pipeline` |
+| 解读 | [`.cursor/skills/tender-interpret/SKILL.md`](.cursor/skills/tender-interpret/SKILL.md) | `tender-insights interpret` |
+| 模版 | [`.cursor/skills/tender-template/SKILL.md`](.cursor/skills/tender-template/SKILL.md) | `tender-insights template` |
+| 法务 | [`.cursor/skills/tender-legal-review/SKILL.md`](.cursor/skills/tender-legal-review/SKILL.md) | `tender-insights legal` |
+
+---
+
 ## 开发与测试
 
 ```bash
