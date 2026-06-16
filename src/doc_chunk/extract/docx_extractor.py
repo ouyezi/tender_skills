@@ -10,17 +10,51 @@ from docx.text.paragraph import Paragraph as DocxParagraph
 from typing import Literal
 
 from doc_chunk.extract.block_index import BlockAccumulator, write_accumulator_markdown, write_content_blocks
+from doc_chunk.extract.docx_numbering import DocxNumberingResolver, merge_list_prefix
 from doc_chunk.extract.promote_headings import parse_content_heading_line
 from doc_chunk.models.document import ExtractResult
 from doc_chunk.models.images_manifest import ImageManifestEntry, ImagesManifest
 from doc_chunk.workspace.layout import OutputWorkspace
 
 
-def _heading_level(style_name: str) -> int | None:
-    parts = style_name.strip().split()
-    if len(parts) != 2 or parts[0] != "Heading" or not parts[1].isdigit():
+def _heading_level_from_style(style_name: str) -> int | None:
+    name = style_name.strip()
+    parts = name.split()
+    if len(parts) == 2 and parts[1].isdigit():
+        if parts[0] in {"Heading", "标题"}:
+            return max(1, min(8, int(parts[1])))
+    return None
+
+
+def _outline_level_from_paragraph(paragraph: DocxParagraph) -> int | None:
+    p_pr = paragraph._element.pPr
+    if p_pr is None:
         return None
-    return max(1, min(6, int(parts[1])))
+    outline_lvl = p_pr.find(qn("w:outlineLvl"))
+    if outline_lvl is None:
+        return None
+    raw = outline_lvl.get(qn("w:val"))
+    if raw is None:
+        return None
+    try:
+        level = int(raw) + 1
+    except ValueError:
+        return None
+    if not 1 <= level <= 8:
+        return None
+    return level
+
+
+def _resolve_paragraph_heading_level(paragraph: DocxParagraph, text: str) -> int | None:
+    level = _heading_level_from_style(paragraph.style.name)
+    if level is not None:
+        return level
+
+    outline_level = _outline_level_from_paragraph(paragraph)
+    if outline_level is not None and parse_content_heading_line(text) is not None:
+        return outline_level
+
+    return None
 
 
 def _docx_element_image_parts(element: object, doc: DocxDocument) -> list[object]:
@@ -98,6 +132,7 @@ def extract_docx(
     promote_headings: Literal["off", "auto"] = "off",
 ) -> ExtractResult:
     doc = DocxDocument(path)
+    numbering = DocxNumberingResolver(doc)
     acc = BlockAccumulator()
     image_count = 0
     image_entries: list[ImageManifestEntry] = []
@@ -105,9 +140,12 @@ def extract_docx(
     for element in doc.element.body.iterchildren():
         if element.tag.endswith("}p"):
             paragraph = DocxParagraph(element, doc)
+            list_prefix = numbering.advance(paragraph)
             text = paragraph.text.strip()
+            if text and list_prefix:
+                text = merge_list_prefix(text, list_prefix)
             if text:
-                level = _heading_level(paragraph.style.name)
+                level = _resolve_paragraph_heading_level(paragraph, text)
                 if level is not None:
                     acc.add_heading(level, text)
                 elif promote_headings == "auto":

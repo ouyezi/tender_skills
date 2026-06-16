@@ -170,6 +170,27 @@ document.getElementById("open-btn").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("reextract-btn").addEventListener("click", async () => {
+  if (!state.sessionId) {
+    setProgress("请先选择会话");
+    return;
+  }
+  if (!confirm("将删除当前工作区输出并重新提取，是否继续？")) {
+    return;
+  }
+  try {
+    const result = await api(`/api/sessions/${state.sessionId}/reextract`, { method: "POST" });
+    state.selectedNodeId = null;
+    document.getElementById("content-panel").innerHTML = "";
+    document.getElementById("section-meta").textContent = "";
+    await refreshSessions();
+    await pollJob(result.job_id);
+  } catch (err) {
+    setProgress(err.message || "re-extract failed");
+    console.error(err);
+  }
+});
+
 document.getElementById("session-select").addEventListener("change", async (event) => {
   state.sessionId = event.target.value || null;
   state.selectedNodeId = null;

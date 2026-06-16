@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from datetime import UTC, datetime
+import uuid
+from pathlib import Path
 
-from viewer.deps import get_session_store
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+
+from viewer.deps import get_job_registry, get_pipeline_service, get_session_store, get_settings
+from viewer.models import UploadResponse
+from viewer.services.reextract import resolve_reextract_input
 
 router = APIRouter(tags=["sessions"])
 
@@ -26,3 +32,31 @@ def delete_session(session_id: str) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail="session not found")
     return {"deleted": True}
+
+
+@router.post("/sessions/{session_id}/reextract", response_model=UploadResponse)
+def reextract_session(session_id: str, background_tasks: BackgroundTasks) -> UploadResponse:
+    store = get_session_store()
+    session = store.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    settings = get_settings()
+    try:
+        input_path = resolve_reextract_input(session, settings)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    job_id = str(uuid.uuid4())
+    workspace_dir = Path(session.workspace_path)
+    store.update(session_id, status="running", error=None, opened_at=datetime.now(UTC).isoformat())
+    get_job_registry().create(job_id, session_id)
+
+    background_tasks.add_task(
+        get_pipeline_service().run_upload_job,
+        job_id=job_id,
+        session_id=session_id,
+        input_path=input_path,
+        workspace_dir=workspace_dir,
+    )
+    return UploadResponse(session_id=session_id, job_id=job_id)
