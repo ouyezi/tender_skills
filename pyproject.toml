@@ -24,6 +24,7 @@ dev = ["pytest>=8.0", "ruff>=0.5.0"]
 
 [project.scripts]
 doc-chunk = "doc_chunk.cli.main:app"
+tender-insights = "tender_insights.cli.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
