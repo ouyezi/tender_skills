@@ -33,10 +33,12 @@ class OutputWorkspace:
         images_dir = root / "images"
         chunks_dir = root / "chunks"
         logs_dir = root / "logs"
+        tables_dir = root / "tables"
         root.mkdir(parents=True, exist_ok=True)
         images_dir.mkdir(exist_ok=True)
         chunks_dir.mkdir(exist_ok=True)
         logs_dir.mkdir(exist_ok=True)
+        tables_dir.mkdir(exist_ok=True)
 
         return cls(
             root=root,
@@ -81,3 +83,11 @@ class OutputWorkspace:
     @property
     def images_manifest_path(self) -> Path:
         return self.images_dir / "manifest.json"
+
+    @property
+    def tables_dir(self) -> Path:
+        return self.root / "tables"
+
+    @property
+    def tables_index_path(self) -> Path:
+        return self.tables_dir / "index.json"
