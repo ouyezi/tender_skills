@@ -46,7 +46,14 @@ def _build_manifest(source_path: Path, file_type: str, warnings: list[str]) -> M
             title=source_path.stem,
         ),
         stages={"extract": stage},
-        outputs={"content": "content.md", "images": "images", "content_blocks": "content.blocks.json", "images_manifest": "images/manifest.json"},
+        outputs={
+            "content": "content.md",
+            "images": "images",
+            "content_blocks": "content.blocks.json",
+            "images_manifest": "images/manifest.json",
+            "tables": "tables",
+            "tables_index": "tables/index.json",
+        },
         warnings=warnings,
     )
 
