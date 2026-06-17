@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from doc_chunk.llm.client import LLMClient
+from doc_chunk.models.content_block import ContentBlocksFile
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
 
@@ -10,6 +11,7 @@ from tender_insights.common.anchor_backfill import backfill_char_range
 from tender_insights.common.llm_extractor import extract_json_model
 from tender_insights.common.output_writer import write_json_artifact
 from tender_insights.common.section_router import SectionRouter, load_routing_rules
+from tender_insights.common.section_slice import load_content_blocks, node_char_range, slice_for_llm
 from tender_insights.config import InsightsConfig
 from tender_insights.interpret.merger import dedupe_by_title
 from tender_insights.legal.models import LegalReviewFile, LegalReviewLLMResponse
@@ -28,15 +30,16 @@ def _section_path(node_id: str, outline: OutlineTree) -> list[str]:
     return list(reversed(chain))
 
 
-def _slice_node_markdown(content_md: str, outline: OutlineTree, node_id: str) -> str:
-    node = next(n for n in outline.nodes if n.node_id == node_id)
-    start = node.anchor.char_start if node.anchor and node.anchor.char_start is not None else 0
-    siblings = sorted(
-        [n for n in outline.nodes if n.level == node.level and (n.anchor.char_start or 0) > start],
-        key=lambda n: n.anchor.char_start or 10**9,
-    )
-    end = siblings[0].anchor.char_start if siblings and siblings[0].anchor else len(content_md)
-    return content_md[start:end]
+def _slice_node_markdown(
+    workspace: OutputWorkspace,
+    content_md: str,
+    outline: OutlineTree,
+    node_id: str,
+    *,
+    blocks: ContentBlocksFile | None = None,
+) -> str:
+    start, end = node_char_range(content_md, outline, node_id)
+    return slice_for_llm(workspace, content_md, start, end, blocks=blocks)
 
 
 def _apply_risk_anchors(items: list, content_md: str) -> None:
@@ -62,6 +65,7 @@ def review_legal_workspace(
     config = config or InsightsConfig.from_env()
     outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
     content_md = workspace.content_path.read_text(encoding="utf-8")
+    blocks = load_content_blocks(workspace)
     router = SectionRouter(load_routing_rules(_ROUTING_PATH))
 
     route_keys = ["legal_risk", "pending"]
@@ -73,7 +77,7 @@ def review_legal_workspace(
     aggregated = LegalReviewLLMResponse()
     for node_id in sorted(target_node_ids):
         node = next(n for n in outline.nodes if n.node_id == node_id)
-        md = _slice_node_markdown(content_md, outline, node_id)
+        md = _slice_node_markdown(workspace, content_md, outline, node_id, blocks=blocks)
         path = _section_path(node_id, outline)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
