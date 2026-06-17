@@ -32,3 +32,18 @@ def sample_docx(tmp_path: Path) -> Path:
 @pytest.fixture
 def sample_docx_with_image(tmp_path: Path) -> Path:
     return _build_sample_docx(tmp_path / "sample_with_image.docx", include_image=True)
+
+
+@pytest.fixture
+def merged_colspan_docx(tmp_path: Path) -> Path:
+    path = tmp_path / "merged_colspan.docx"
+    doc = Document()
+    table = doc.add_table(rows=2, cols=3)
+    table.cell(0, 0).merge(table.cell(0, 1))
+    table.cell(0, 0).text = "姓名"
+    table.cell(0, 2).text = "角色"
+    table.cell(1, 0).merge(table.cell(1, 1))
+    table.cell(1, 0).text = "刘敏"
+    table.cell(1, 2).text = "开发"
+    doc.save(path)
+    return path
