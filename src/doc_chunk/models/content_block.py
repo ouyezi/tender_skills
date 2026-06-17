@@ -12,8 +12,9 @@ class ContentBlockRecord(BaseModel):
     char_end: int
     text_preview: str | None = None
     image_ref: str | None = None
+    table_ref: str | None = None
 
 
 class ContentBlocksFile(BaseModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.1"
     blocks: list[ContentBlockRecord] = Field(default_factory=list)
