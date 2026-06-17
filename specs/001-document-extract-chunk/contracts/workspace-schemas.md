@@ -38,7 +38,9 @@
     "outline_refined": "outline_refined.json",
     "outline_mapping": "outline_mapping.json",
     "chunks_dir": "chunks",
-    "chunks_index": "chunks/index.json"
+    "chunks_index": "chunks/index.json",
+    "tables": "tables",
+    "tables_index": "tables/index.json"
   },
   "warnings": [],
   "errors": []
@@ -192,9 +194,11 @@
 
 ## content.blocks.json
 
+**schema_version**: `1.0` | `1.1`（含表格侧车时 MUST 为 `1.1`）
+
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "blocks": [
     {
       "block_index": 0,
@@ -202,13 +206,92 @@
       "char_start": 0,
       "char_end": 12,
       "text_preview": "1. 技术方案",
-      "image_ref": null
+      "image_ref": null,
+      "table_ref": null
+    },
+    {
+      "block_index": 3,
+      "block_type": "table",
+      "char_start": 120,
+      "char_end": 280,
+      "text_preview": "| 姓名 | 本项目工作角色 |",
+      "image_ref": null,
+      "table_ref": "tables/t0003.json"
     }
   ]
 }
 ```
 
 **block_type enum**: `paragraph` | `table` | `image` | `heading`
+
+**table_ref**（schema 1.1，可选）：指向 `tables/t{NNNN}.json` 侧车文件的相对路径。`block_type == "table"` 且 extract 阶段成功写入侧车时 MUST 非空；旧工作区或无侧车的 table 块可省略或为 `null`（向后兼容）。
+
+`char_start`/`char_end` 仍锚定 `content.md` 中的 Markdown 表格片段，与侧车 `markdown` 字段内容一致。
+
+---
+
+## tables/index.json
+
+表格侧车索引，extract 阶段写入。
+
+```json
+{
+  "schema_version": "1.0",
+  "tables": [
+    {"block_index": 3, "path": "tables/t0003.json"}
+  ]
+}
+```
+
+**tables[]** 按 `block_index` 升序排列；`path` 为相对工作区根目录的路径。
+
+---
+
+## tables/t{NNNN}.json
+
+单表侧车，文件名中 `{NNNN}` 为四位零填充的 `block_index`（如 `t0003.json`）。
+
+```json
+{
+  "schema_version": "1.0",
+  "block_index": 3,
+  "layout_type": "personnel_dual_row",
+  "grid_width": 4,
+  "grid": {
+    "rows": [
+      {
+        "cells": [
+          {"text": "姓名", "colspan": 1, "rowspan": 1, "vmerge": null},
+          {"text": "本项目工作角色", "colspan": 1, "rowspan": 1, "vmerge": null}
+        ]
+      }
+    ]
+  },
+  "logical_rows": [
+    ["姓名", "本项目工作角色", "性别", "学历"],
+    ["刘敏", "开发工程师", "男", "本科"]
+  ],
+  "markdown": "| 姓名 | 本项目工作角色 | 性别 | 学历 |\n| --- | --- | --- | --- |\n| 刘敏 | 开发工程师 | 男 | 本科 |",
+  "llm_text": "【表格:人员信息】\n--- 记录 1 ---\n姓名: 刘敏\n...",
+  "record_groups": [[0, 1], [2, 3]],
+  "records": [
+    {
+      "姓名": "刘敏",
+      "本项目工作角色": "开发工程师",
+      "性别": "男",
+      "学历": "本科",
+      "级别": "高级Java工程师",
+      "年龄": "35",
+      "毕业学校": "承德石油学院",
+      "从业年限": "9+"
+    }
+  ]
+}
+```
+
+**layout_type enum**: `personnel_dual_row` | `simple` | `key_value` | `fallback`
+
+**grid**：OOXML 物理网格（含 `colspan`/`rowspan`/`vmerge`）；**logical_rows**：合并去重后的逻辑行；**markdown**：写入 `content.md` 的 Markdown；**llm_text**：供 LLM 消费的文本（`substitute_tables_for_llm` 替换用）；**record_groups**/**records**：结构化记录（版式相关）。
 
 ---
 
@@ -301,8 +384,9 @@
 3. 必填字段缺失时解析失败
 4. `level` 超出 1–8 时验证失败
 5. `chunk_id` 链接双向一致（previous/next）
+6. extract 后 `content.blocks.json` 中 table 块的 `table_ref`、`char_start`/`char_end` 与 `tables/` 侧车及 `content.md` 锚点对齐
 
-测试路径：`tests/contract/test_workspace_schemas.py`
+测试路径：`tests/contract/test_workspace_schemas.py`、`tests/contract/test_table_sidecar.py`
 
 ---
 
@@ -311,5 +395,6 @@
 | Version | Change |
 |---------|--------|
 | 1.0 | 初始版本，含 refined outline 字段 |
+| 1.1 | `content.blocks.json` 新增 `table_ref`；新增 `tables/index.json` 与 `tables/t{NNNN}.json` 侧车 |
 
 未来版本 MUST 递增 `schema_version` 并提供读取旧版的兼容层。
