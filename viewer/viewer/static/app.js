@@ -1,4 +1,9 @@
-const state = { sessionId: null, selectedNodeId: null, pollTimer: null };
+const state = {
+  sessionId: null,
+  selectedNodeId: null,
+  pollTimer: null,
+  collapsedNodeIds: new Set(),
+};
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
@@ -70,16 +75,55 @@ function renderNodes(nodes, depth) {
   const ul = document.createElement("ul");
   for (const node of nodes) {
     const li = document.createElement("li");
+    const row = document.createElement("div");
+    row.className = "tree-row";
+    row.style.paddingLeft = `${depth * 12 + 4}px`;
+
+    const hasChildren = Boolean(node.children?.length);
+    if (hasChildren) {
+      const collapsed = state.collapsedNodeIds.has(node.node_id);
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "tree-toggle";
+      toggle.textContent = collapsed ? "▸" : "▾";
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      toggle.setAttribute("aria-label", collapsed ? "展开" : "收起");
+      toggle.onclick = (event) => {
+        event.stopPropagation();
+        const childUl = li.querySelector(":scope > ul");
+        if (!childUl) return;
+        const willCollapse = !childUl.hidden;
+        childUl.hidden = willCollapse;
+        toggle.textContent = willCollapse ? "▸" : "▾";
+        toggle.setAttribute("aria-expanded", String(!willCollapse));
+        toggle.setAttribute("aria-label", willCollapse ? "展开" : "收起");
+        if (willCollapse) {
+          state.collapsedNodeIds.add(node.node_id);
+        } else {
+          state.collapsedNodeIds.delete(node.node_id);
+        }
+      };
+      row.appendChild(toggle);
+    } else {
+      const spacer = document.createElement("span");
+      spacer.className = "tree-toggle-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      row.appendChild(spacer);
+    }
+
     const btn = document.createElement("button");
     btn.className = "tree-node";
     btn.type = "button";
     btn.dataset.nodeId = node.node_id;
-    btn.style.paddingLeft = `${depth * 12 + 8}px`;
     btn.textContent = (node.needs_review ? "⚠ " : "") + node.title;
     btn.onclick = () => selectNode(node.node_id);
-    li.appendChild(btn);
-    if (node.children?.length) {
-      li.appendChild(renderNodes(node.children, depth + 1));
+    row.appendChild(btn);
+    li.appendChild(row);
+
+    if (hasChildren) {
+      const childUl = renderNodes(node.children, depth + 1);
+      childUl.hidden = state.collapsedNodeIds.has(node.node_id);
+      li.appendChild(childUl);
     }
     ul.appendChild(li);
   }
@@ -138,6 +182,7 @@ document.getElementById("upload-input").addEventListener("change", async (event)
     const result = await api("/api/upload", { method: "POST", body: form });
     state.sessionId = result.session_id;
     state.selectedNodeId = null;
+    state.collapsedNodeIds = new Set();
     document.getElementById("content-panel").innerHTML = "";
     document.getElementById("section-meta").textContent = "";
     await refreshSessions();
@@ -160,6 +205,7 @@ document.getElementById("open-btn").addEventListener("click", async () => {
     });
     state.sessionId = result.session_id;
     state.selectedNodeId = null;
+    state.collapsedNodeIds = new Set();
     document.getElementById("content-panel").innerHTML = "";
     document.getElementById("section-meta").textContent = "";
     await refreshSessions();
@@ -181,6 +227,7 @@ document.getElementById("reextract-btn").addEventListener("click", async () => {
   try {
     const result = await api(`/api/sessions/${state.sessionId}/reextract`, { method: "POST" });
     state.selectedNodeId = null;
+    state.collapsedNodeIds = new Set();
     document.getElementById("content-panel").innerHTML = "";
     document.getElementById("section-meta").textContent = "";
     await refreshSessions();
@@ -194,6 +241,7 @@ document.getElementById("reextract-btn").addEventListener("click", async () => {
 document.getElementById("session-select").addEventListener("change", async (event) => {
   state.sessionId = event.target.value || null;
   state.selectedNodeId = null;
+  state.collapsedNodeIds = new Set();
   document.getElementById("content-panel").innerHTML = "";
   document.getElementById("section-meta").textContent = "";
   try {
