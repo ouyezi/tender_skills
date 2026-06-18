@@ -12,6 +12,8 @@ from typing import Literal
 from doc_chunk.extract.block_index import BlockAccumulator, write_accumulator_markdown, write_content_blocks
 from doc_chunk.extract.docx_numbering import DocxNumberingResolver, merge_list_prefix
 from doc_chunk.extract.promote_headings import parse_content_heading_line
+from doc_chunk.extract.table_extractor import extract_table
+from doc_chunk.extract.table_sidecar import TableSidecarWriter
 from doc_chunk.models.document import ExtractResult
 from doc_chunk.models.images_manifest import ImageManifestEntry, ImagesManifest
 from doc_chunk.workspace.layout import OutputWorkspace
@@ -108,23 +110,6 @@ def _save_docx_image(workspace: OutputWorkspace, image_part: object, image_numbe
     return image_name
 
 
-def _table_to_markdown(table: DocxTable) -> str:
-    rows = [[cell.text.strip().replace("\n", " ") for cell in row.cells] for row in table.rows]
-    if not rows:
-        return ""
-    column_count = max(len(row) for row in rows)
-    if column_count == 0:
-        return ""
-    normalized_rows = [row + [""] * (column_count - len(row)) for row in rows]
-    header = normalized_rows[0]
-    lines = [
-        f"| {' | '.join(header)} |",
-        f"| {' | '.join('---' for _ in range(column_count))} |",
-    ]
-    lines.extend(f"| {' | '.join(row)} |" for row in normalized_rows[1:])
-    return "\n".join(lines)
-
-
 def extract_docx(
     path: Path,
     workspace: OutputWorkspace,
@@ -134,8 +119,10 @@ def extract_docx(
     doc = DocxDocument(path)
     numbering = DocxNumberingResolver(doc)
     acc = BlockAccumulator()
+    sidecar_writer = TableSidecarWriter(workspace)
     image_count = 0
     image_entries: list[ImageManifestEntry] = []
+    all_warnings: list[str] = []
 
     for element in doc.element.body.iterchildren():
         if element.tag.endswith("}p"):
@@ -175,9 +162,14 @@ def extract_docx(
 
         if element.tag.endswith("}tbl"):
             table = DocxTable(element, doc)
-            table_md = _table_to_markdown(table)
-            if table_md:
-                acc.add_table(table_md)
+            block_index_before = acc.block_count
+            markdown, sidecar, tbl_warnings = extract_table(table, block_index_before)
+            all_warnings.extend(tbl_warnings)
+            table_ref = None
+            if markdown:
+                if sidecar:
+                    table_ref = sidecar_writer.write(sidecar)
+                acc.add_table(markdown, table_ref=table_ref)
             for image_part in _docx_table_image_parts(table, doc):
                 image_count += 1
                 image_name = _save_docx_image(workspace, image_part, image_count)
@@ -196,7 +188,8 @@ def extract_docx(
 
     write_accumulator_markdown(workspace, acc)
     write_content_blocks(workspace, acc.finalize())
+    sidecar_writer.finalize()
     if image_entries:
         manifest = ImagesManifest(images=image_entries)
         workspace.images_manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-    return ExtractResult(image_count=image_count, warnings=[])
+    return ExtractResult(image_count=image_count, warnings=all_warnings)

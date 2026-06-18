@@ -25,8 +25,16 @@ def test_block_accumulator_tracks_char_offsets(tmp_path: Path) -> None:
 
     path = write_content_blocks(ws, blocks_file)
     loaded = ContentBlocksFile.model_validate_json(path.read_text(encoding="utf-8"))
-    assert loaded.schema_version == "1.0"
+    assert loaded.schema_version == "1.1"
     assert len(loaded.blocks) == 4
+
+
+def test_block_accumulator_table_ref() -> None:
+    acc = BlockAccumulator()
+    acc.add_table("| a | b |", table_ref="tables/t0000.json")
+    blocks_file = acc.finalize()
+    assert blocks_file.schema_version == "1.1"
+    assert blocks_file.blocks[0].table_ref == "tables/t0000.json"
 
 
 def test_extract_writes_images_manifest(sample_docx_with_image: Path, tmp_path: Path) -> None:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from doc_chunk.llm.client import LLMClient
+from doc_chunk.models.content_block import ContentBlocksFile
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
 
 from tender_insights.common.output_writer import write_json_artifact
+from tender_insights.common.section_slice import load_content_blocks, slice_for_llm
 from tender_insights.template.boundary import slice_by_heading_level
 from tender_insights.template.classifier import classify_template
 from tender_insights.template.detector import detect_template_nodes
@@ -21,18 +23,25 @@ def _section_path(node_id: str, outline: OutlineTree) -> list[str]:
     return list(reversed(chain))
 
 
-def _slice_node_markdown(content_md: str, outline: OutlineTree, node_id: str) -> tuple[str, int, int]:
+def _slice_node_markdown(
+    workspace: OutputWorkspace,
+    content_md: str,
+    outline: OutlineTree,
+    node_id: str,
+    *,
+    blocks: ContentBlocksFile | None = None,
+) -> tuple[str, int, int]:
     node = next(n for n in outline.nodes if n.node_id == node_id)
     start = node.anchor.char_start if node.anchor and node.anchor.char_start is not None else 0
     siblings = sorted(
         [n for n in outline.nodes if n.level == node.level and (n.anchor.char_start or 0) > start],
         key=lambda n: n.anchor.char_start or 10**9,
     )
-    end = siblings[0].anchor.char_start if siblings and siblings[0].anchor else len(content_md)
-    md, end = slice_by_heading_level(content_md, start, node.level)
-    if not md:
-        md = content_md[start:end].strip()
-    return md, start, end
+    sibling_end = siblings[0].anchor.char_start if siblings and siblings[0].anchor else len(content_md)
+    md, heading_end = slice_by_heading_level(content_md, start, node.level)
+    char_end = heading_end if md else sibling_end
+    llm_md = slice_for_llm(workspace, content_md, start, char_end, blocks=blocks).strip()
+    return llm_md, start, char_end
 
 
 def extract_templates_workspace(
@@ -42,6 +51,7 @@ def extract_templates_workspace(
     del client  # rule-based classifier; client reserved for future LLM fallback
     outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
     content_md = workspace.content_path.read_text(encoding="utf-8")
+    blocks = load_content_blocks(workspace)
 
     templates_dir = workspace.root / "templates"
     templates_dir.mkdir(parents=True, exist_ok=True)
@@ -50,7 +60,9 @@ def extract_templates_workspace(
     entries: list[TemplateEntry] = []
 
     for idx, hit in enumerate(detect_template_nodes(outline), start=1):
-        md, char_start, char_end = _slice_node_markdown(content_md, outline, hit.node_id)
+        md, char_start, char_end = _slice_node_markdown(
+            workspace, content_md, outline, hit.node_id, blocks=blocks
+        )
         tpl_type, type_label, confidence = classify_template(hit.title, md)
 
         type_counters[tpl_type] = type_counters.get(tpl_type, 0) + 1

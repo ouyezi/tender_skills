@@ -37,8 +37,21 @@ class BlockAccumulator:
         depth = max(1, min(6, level))
         self._append(f"{'#' * depth} {text.strip()}\n\n", "heading")
 
-    def add_table(self, table_md: str) -> None:
-        self._append(f"{table_md}\n\n", "table")
+    def add_table(self, table_md: str, *, table_ref: str | None = None) -> None:
+        start = self._cursor
+        self._markdown_parts.append(f"{table_md}\n\n")
+        self._cursor += len(f"{table_md}\n\n")
+        preview = table_md[:120] or None
+        self._blocks.append(
+            ContentBlockRecord(
+                block_index=len(self._blocks),
+                block_type="table",
+                char_start=start,
+                char_end=self._cursor,
+                text_preview=preview,
+                table_ref=table_ref,
+            )
+        )
 
     def add_image(self, image_ref: str, alt: str = "image") -> None:
         line = f"![{alt}]({image_ref})\n\n"
@@ -53,7 +66,7 @@ class BlockAccumulator:
         return len(self._blocks)
 
     def finalize(self) -> ContentBlocksFile:
-        return ContentBlocksFile(blocks=list(self._blocks))
+        return ContentBlocksFile(schema_version="1.1", blocks=list(self._blocks))
 
 
 def write_content_blocks(workspace: OutputWorkspace, blocks_file: ContentBlocksFile) -> Path:

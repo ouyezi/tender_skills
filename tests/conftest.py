@@ -32,3 +32,39 @@ def sample_docx(tmp_path: Path) -> Path:
 @pytest.fixture
 def sample_docx_with_image(tmp_path: Path) -> Path:
     return _build_sample_docx(tmp_path / "sample_with_image.docx", include_image=True)
+
+
+@pytest.fixture
+def merged_colspan_docx(tmp_path: Path) -> Path:
+    path = tmp_path / "merged_colspan.docx"
+    doc = Document()
+    table = doc.add_table(rows=2, cols=3)
+    table.cell(0, 0).merge(table.cell(0, 1))
+    table.cell(0, 0).text = "姓名"
+    table.cell(0, 2).text = "角色"
+    table.cell(1, 0).merge(table.cell(1, 1))
+    table.cell(1, 0).text = "刘敏"
+    table.cell(1, 2).text = "开发"
+    doc.save(path)
+    return path
+
+
+@pytest.fixture
+def personnel_dual_row_docx(tmp_path: Path) -> Path:
+    path = tmp_path / "personnel_dual_row.docx"
+    doc = Document()
+    table = doc.add_table(rows=4, cols=4)
+    headers1 = ["姓名", "本项目工作角色", "性别", "学历"]
+    values1 = ["刘敏", "开发工程师", "男", "本科"]
+    headers2 = ["级别", "年龄", "毕业学校", "从业年限"]
+    values2 = ["高级Java工程师", "35", "承德石油学院", "9+"]
+    for c, h in enumerate(headers1):
+        table.cell(0, c).text = h
+    for c, v in enumerate(values1):
+        table.cell(1, c).text = v
+    for c, h in enumerate(headers2):
+        table.cell(2, c).text = h
+    for c, v in enumerate(values2):
+        table.cell(3, c).text = v
+    doc.save(path)
+    return path

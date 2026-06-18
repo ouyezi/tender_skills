@@ -5,6 +5,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 from doc_chunk.extract.docx_extractor import extract_docx
+from doc_chunk.models.content_block import ContentBlocksFile
+from doc_chunk.models.table_model import TableSidecar, TablesIndex
 from doc_chunk.workspace.layout import OutputWorkspace
 
 
@@ -68,3 +70,28 @@ def test_extract_docx_recognizes_outline_level_without_heading_style(tmp_path: P
     assert "## 15.荣誉证书" in content
     assert content.index("## 13.") < content.index("## 14.")
     assert content.index("## 14.") < content.index("## 15.")
+
+
+def test_extract_docx_table_sidecar(merged_colspan_docx: Path, tmp_path: Path) -> None:
+    ws = OutputWorkspace.create(tmp_path / "ws", overwrite=False)
+
+    extract_docx(merged_colspan_docx, ws)
+
+    assert ws.tables_index_path.exists()
+    index = TablesIndex.model_validate_json(ws.tables_index_path.read_text(encoding="utf-8"))
+    assert len(index.tables) == 1
+    assert index.tables[0].path == "tables/t0000.json"
+
+    blocks = ContentBlocksFile.model_validate_json(ws.content_blocks_path.read_text(encoding="utf-8"))
+    assert blocks.schema_version == "1.1"
+    table_blocks = [b for b in blocks.blocks if b.block_type == "table"]
+    assert len(table_blocks) == 1
+    assert table_blocks[0].table_ref == "tables/t0000.json"
+
+    sidecar = TableSidecar.model_validate_json((ws.tables_dir / "t0000.json").read_text(encoding="utf-8"))
+    assert sidecar.block_index == 0
+    assert sidecar.markdown
+
+    content = ws.content_path.read_text(encoding="utf-8")
+    assert "姓名 | 姓名" not in content
+    assert "刘敏 | 刘敏" not in content
