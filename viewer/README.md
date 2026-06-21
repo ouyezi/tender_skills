@@ -53,7 +53,7 @@ python -m viewer
 | 上传新文件 | 支持 `.docx` / `.pdf`；后台跑 `extract → outline → tree → chunk`（跳过 refine 与 enrich） |
 | 打开已有工作区 | 指定本地含 `outline.json` + `content.md` 的目录，直接浏览（适合 CLI 产出后调试） |
 | 会话历史 | 本机记录最近 20 条处理记录，可快速切换 |
-| Outline 树 | 左侧展示 1–8 级章节目录；`needs_review` 节点有警告标识 |
+| Outline 树 | 左侧展示 1–8 级章节目录；`needs_review` 节点有警告标识；有子节点的父级可点击 ▸/▾ 展开/收起 |
 | 章节 Markdown | 右侧按 outline 字符锚点从 `content.md` 截取并渲染 |
 | 图片代理 | 工作区 `images/` 等资源通过 API 加载，不直接暴露文件路径 |
 | Pipeline 进度 | 上传后轮询 job 状态，显示 extract / outline / tree / chunk 阶段 |
@@ -70,6 +70,7 @@ python -m viewer
 2. 选择 `.docx` 或 `.pdf`
 3. 等待进度条完成（通常数秒，视文档大小而定）
 4. 左侧点击章节节点，右侧查看对应 Markdown
+5. 目录较深时，点击父节点左侧 ▸/▾ 收起子树，便于定位目标章节
 
 ### 2. 浏览 CLI 产出工作区
 

@@ -8,6 +8,7 @@
 - CLI：`doc-chunk` · 库 API：`doc_chunk.api`
 - 输出稳定 JSON schema（`schema_version: 1.0`）
 - 分块默认按 **outline 字符锚点**切片，与目录树强一致（无 Heading 样式标书可用）
+- Word 表格从 OOXML 物理网格解析，合并单元格去重后写入 `content.md`；完整网格与 LLM 友好文本存于 `tables/` 侧车
 - 提取阶段**不做**图片 OCR（图像语义由下游 skills 处理）
 
 完整需求见 [`docs/superpowers/specs/2026-06-15-doc-chunk-requirements.md`](docs/superpowers/specs/2026-06-15-doc-chunk-requirements.md)。  
@@ -59,7 +60,7 @@ doc-chunk pipeline /path/to/bid.docx \
 ### 分步执行
 
 ```bash
-# 1. 提取 → content.md + content.blocks.json + images/
+# 1. 提取 → content.md + content.blocks.json + images/ + tables/（docx）
 doc-chunk extract /path/to/bid.docx -o ./output/my-bid
 
 # 无 Word Heading 样式时，可将编号行升格为 Markdown # 标题（便于人工阅读）
@@ -100,13 +101,16 @@ doc-chunk pipeline \
 
 ```text
 workspace/
-├── content.md              # Markdown 正文
-├── content.blocks.json     # 块索引侧车（char_start/char_end 锚点）
+├── content.md              # Markdown 正文（表格为去重后的 Markdown）
+├── content.blocks.json     # 块索引侧车（char_start/char_end 锚点；table 块含 table_ref）
 ├── document_tree.json      # 块级文档树（tk DocumentTreeNode 等价）
 ├── linkage.json            # outline ↔ tree ↔ chunk ID 映射（原始目录分块时生成）
 ├── images/
 │   ├── manifest.json       # 图片清单
 │   └── docx-img-001.png
+├── tables/                 # 表格侧车（schema 1.1，仅 docx extract）
+│   ├── index.json          # block_index → 侧车路径
+│   └── t0003.json          # 物理 grid、logical_rows、markdown、llm_text、records
 ├── outline.json            # 原始目录树（含 char 锚点）
 ├── outline_refined.json    # LLM 优化后（accept 后才有）
 ├── outline_mapping.json    # 优化节点 → 原文映射
@@ -283,6 +287,36 @@ run_pipeline(
 
 块 JSON 关键字段：`section_path`、`heading_level`、`outline_source`、`original_node_ids`、`blocks`、`source_ranges`、`metadata` 等，详见 [`specs/001-document-extract-chunk/contracts/workspace-schemas.md`](specs/001-document-extract-chunk/contracts/workspace-schemas.md)。
 
+### 表格侧车与 LLM 替换
+
+extract 阶段为每个 Word 表格写入 `tables/t{NNNN}.json`，并在 `content.blocks.json` 对应块上挂 `table_ref`。侧车保留 OOXML 物理网格（`colspan`/`rowspan`/`vmerge`）、去重后的 `logical_rows`、写入 `content.md` 的 `markdown`，以及供 LLM 消费的 `llm_text`（如 `【表格:人员信息】` 结构化记录）。
+
+```python
+from pathlib import Path
+from doc_chunk.table import load_table_model, substitute_tables_for_llm
+from doc_chunk.convert.table_to_docx import render_sidecar_to_docx
+from doc_chunk.models.content_block import ContentBlocksFile
+from doc_chunk.workspace.layout import OutputWorkspace
+from docx import Document
+
+workspace = OutputWorkspace(Path("output/my-bid"))
+blocks = ContentBlocksFile.model_validate_json(
+    workspace.content_blocks_path.read_text(encoding="utf-8")
+)
+content_md = workspace.content_path.read_text(encoding="utf-8")
+
+# 将区间内 Markdown 表格替换为 llm_text（无侧车时透传原文）
+llm_input = substitute_tables_for_llm(content_md, blocks, workspace=workspace)
+
+# 从侧车回写 Word（可选修改 records 后渲染）
+sidecar = load_table_model(workspace, "tables/t0003.json")
+doc = Document()
+render_sidecar_to_docx(doc, sidecar, records=sidecar.records)
+doc.save("out.docx")
+```
+
+旧工作区无 `tables/` 时，`substitute_tables_for_llm` 保持 Markdown 不变（向后兼容）。
+
 ---
 
 ## LLM 配置
@@ -334,6 +368,8 @@ doc-chunk enrich ./out --classification-config ./my_classification.yaml
 | 续切阈值 | 默认 20,000 token/块，章节边界优先 |
 | 批量提取/流水线 | 单文件失败默认继续，汇总部分成功（退出码 2） |
 | 图片 | 仅导出原图；不做 OCR / image_notes |
+| Word 表格 | 从 OOXML 解析物理网格，合并单元格去重后写入 `content.md`；完整结构写入 `tables/` 侧车（`llm_text` + `records`） |
+| 表格回写 | `render_table_to_docx` / `render_sidecar_to_docx` 按物理网格与 `records` 写回 `.docx` |
 
 ---
 
@@ -392,6 +428,8 @@ python -m pytest tests/tender_insights/ -v
 工作区 `manifest.json` 会追加对应 `stages` 与 `outputs` 条目。
 
 > **风险字段区分：** `interpretation.json` 的 `bid_risk_items` 是投标执行视角；`legal_review.json` 的 `risk_items` 是法务合规视角。两套分析独立运行，互不读取。
+
+切片送 LLM 前，`interpret` / `legal` / `template` 会通过 `slice_for_llm` 将章节内的 Markdown 表格替换为侧车 `llm_text`（人员双行表等合并单元格场景更准确）；无 `tables/` 侧车时仍使用 `content.md` 原文。
 
 ### LLM 配置
 
@@ -464,12 +502,13 @@ python -m pytest tests/unit tests/contract -v
 | CLI 契约 | [`specs/001-document-extract-chunk/contracts/cli.md`](specs/001-document-extract-chunk/contracts/cli.md) |
 | Python API | [`specs/001-document-extract-chunk/contracts/python-api.md`](specs/001-document-extract-chunk/contracts/python-api.md) |
 | 工作区 Schema | [`specs/001-document-extract-chunk/contracts/workspace-schemas.md`](specs/001-document-extract-chunk/contracts/workspace-schemas.md) |
+| **Word 表格提取（004）** | [`docs/superpowers/specs/2026-06-17-docx-table-extract-design.md`](docs/superpowers/specs/2026-06-17-docx-table-extract-design.md) |
 
 ---
 
 ## Viewer（调试 UI）
 
-独立附属应用 `viewer/`，供本机上传/打开工作区、浏览 outline 树与章节 Markdown（左侧目录 + 右侧原文）。
+独立附属应用 `viewer/`，供本机上传/打开工作区、浏览 outline 树与章节 Markdown（左侧目录 + 右侧原文）。Outline 父节点支持展开/收起，便于浏览深层目录。
 
 ```bash
 pip install -e "./viewer[dev]"
