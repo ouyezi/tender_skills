@@ -59,26 +59,28 @@ def _resolve_paragraph_heading_level(paragraph: DocxParagraph, text: str) -> int
     return None
 
 
-def _docx_element_image_parts(element: object, doc: DocxDocument) -> list[object]:
-    image_parts: list[object] = []
+def _docx_element_image_embeds(element: object, doc: DocxDocument) -> list[tuple[str, object]]:
+    embeds: list[tuple[str, object]] = []
+    seen_relationship_ids: set[str] = set()
     for child in element.iter():
         if child.tag != qn("a:blip"):
             continue
         relationship_id = child.get(qn("r:embed"))
-        if relationship_id is None:
+        if relationship_id is None or relationship_id in seen_relationship_ids:
             continue
         image_part = doc.part.related_parts.get(relationship_id)
         if image_part is not None:
-            image_parts.append(image_part)
-    return image_parts
+            seen_relationship_ids.add(relationship_id)
+            embeds.append((relationship_id, image_part))
+    return embeds
 
 
-def _docx_paragraph_image_parts(paragraph: DocxParagraph, doc: DocxDocument) -> list[object]:
-    return _docx_element_image_parts(paragraph._element, doc)
+def _docx_paragraph_image_embeds(paragraph: DocxParagraph, doc: DocxDocument) -> list[tuple[str, object]]:
+    return _docx_element_image_embeds(paragraph._element, doc)
 
 
-def _docx_table_image_parts(table: DocxTable, doc: DocxDocument) -> list[object]:
-    image_parts: list[object] = []
+def _docx_table_image_embeds(table: DocxTable, doc: DocxDocument) -> list[tuple[str, object]]:
+    embeds: list[tuple[str, object]] = []
     seen_cells: set[int] = set()
     for row in table.rows:
         for cell in row.cells:
@@ -87,8 +89,8 @@ def _docx_table_image_parts(table: DocxTable, doc: DocxDocument) -> list[object]
                 continue
             seen_cells.add(cell_id)
             for paragraph in cell.paragraphs:
-                image_parts.extend(_docx_paragraph_image_parts(paragraph, doc))
-    return image_parts
+                embeds.extend(_docx_paragraph_image_embeds(paragraph, doc))
+    return embeds
 
 
 def _image_extension(partname: object, content_type: str) -> str:
@@ -110,6 +112,39 @@ def _save_docx_image(workspace: OutputWorkspace, image_part: object, image_numbe
     return image_name
 
 
+def _register_docx_image(
+    *,
+    relationship_id: str,
+    image_part: object,
+    relationship_to_image_ref: dict[str, str],
+    workspace: OutputWorkspace,
+    acc: BlockAccumulator,
+    image_entries: list[ImageManifestEntry],
+    image_count: int,
+) -> int:
+    if relationship_id not in relationship_to_image_ref:
+        file_number = len(relationship_to_image_ref) + 1
+        image_name = _save_docx_image(workspace, image_part, file_number)
+        relationship_to_image_ref[relationship_id] = f"images/{image_name}"
+    else:
+        image_name = Path(relationship_to_image_ref[relationship_id]).name
+
+    image_count += 1
+    image_ref = relationship_to_image_ref[relationship_id]
+    block_index_before = acc.block_count
+    acc.add_image(image_ref, alt=f"docx-img-{image_count:03d}")
+    image_entries.append(
+        ImageManifestEntry(
+            image_ref=image_ref,
+            file_name=image_name,
+            content_type=image_part.content_type,
+            byte_size=len(image_part.blob),
+            source_block_index=block_index_before,
+        )
+    )
+    return image_count
+
+
 def extract_docx(
     path: Path,
     workspace: OutputWorkspace,
@@ -122,6 +157,7 @@ def extract_docx(
     sidecar_writer = TableSidecarWriter(workspace)
     image_count = 0
     image_entries: list[ImageManifestEntry] = []
+    relationship_to_image_ref: dict[str, str] = {}
     all_warnings: list[str] = []
 
     for element in doc.element.body.iterchildren():
@@ -143,20 +179,15 @@ def extract_docx(
                         acc.add_paragraph(text)
                 else:
                     acc.add_paragraph(text)
-            for image_part in _docx_paragraph_image_parts(paragraph, doc):
-                image_count += 1
-                image_name = _save_docx_image(workspace, image_part, image_count)
-                image_ref = f"images/{image_name}"
-                block_index_before = acc.block_count
-                acc.add_image(image_ref, alt=f"docx-img-{image_count:03d}")
-                image_entries.append(
-                    ImageManifestEntry(
-                        image_ref=image_ref,
-                        file_name=image_name,
-                        content_type=image_part.content_type,
-                        byte_size=len(image_part.blob),
-                        source_block_index=block_index_before,
-                    )
+            for relationship_id, image_part in _docx_paragraph_image_embeds(paragraph, doc):
+                image_count = _register_docx_image(
+                    relationship_id=relationship_id,
+                    image_part=image_part,
+                    relationship_to_image_ref=relationship_to_image_ref,
+                    workspace=workspace,
+                    acc=acc,
+                    image_entries=image_entries,
+                    image_count=image_count,
                 )
             continue
 
@@ -170,20 +201,15 @@ def extract_docx(
                 if sidecar:
                     table_ref = sidecar_writer.write(sidecar)
                 acc.add_table(markdown, table_ref=table_ref)
-            for image_part in _docx_table_image_parts(table, doc):
-                image_count += 1
-                image_name = _save_docx_image(workspace, image_part, image_count)
-                image_ref = f"images/{image_name}"
-                block_index_before = acc.block_count
-                acc.add_image(image_ref, alt=f"docx-img-{image_count:03d}")
-                image_entries.append(
-                    ImageManifestEntry(
-                        image_ref=image_ref,
-                        file_name=image_name,
-                        content_type=image_part.content_type,
-                        byte_size=len(image_part.blob),
-                        source_block_index=block_index_before,
-                    )
+            for relationship_id, image_part in _docx_table_image_embeds(table, doc):
+                image_count = _register_docx_image(
+                    relationship_id=relationship_id,
+                    image_part=image_part,
+                    relationship_to_image_ref=relationship_to_image_ref,
+                    workspace=workspace,
+                    acc=acc,
+                    image_entries=image_entries,
+                    image_count=image_count,
                 )
 
     write_accumulator_markdown(workspace, acc)

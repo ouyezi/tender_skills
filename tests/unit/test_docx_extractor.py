@@ -33,6 +33,67 @@ def test_extract_docx_writes_markdown(sample_docx: Path, tmp_path: Path) -> None
     assert result.warnings == []
 
 
+def test_extract_docx_deduplicates_repeated_embed_references(
+    sample_docx_with_duplicate_embed: Path, tmp_path: Path
+) -> None:
+    ws = OutputWorkspace.create(tmp_path / "ws", overwrite=False)
+
+    result = extract_docx(sample_docx_with_duplicate_embed, ws)
+
+    content = ws.content_path.read_text(encoding="utf-8")
+    images = [p for p in ws.images_dir.iterdir() if p.name != "manifest.json"]
+    assert result.image_count == 2
+    assert len(images) == 1
+    assert content.count("![") == 2
+    assert content.count("images/docx-img-001") == 2
+
+
+def test_extract_docx_deduplicates_repeated_embed_in_paragraph(
+    sample_docx_with_duplicate_blip_in_paragraph: Path, tmp_path: Path
+) -> None:
+    ws = OutputWorkspace.create(tmp_path / "ws", overwrite=False)
+
+    result = extract_docx(sample_docx_with_duplicate_blip_in_paragraph, ws)
+
+    content = ws.content_path.read_text(encoding="utf-8")
+    images = [p for p in ws.images_dir.iterdir() if p.name != "manifest.json"]
+    assert result.image_count == 1
+    assert len(images) == 1
+    assert content.count("![") == 1
+
+
+def test_extract_docx_reuses_file_across_paragraphs(
+    sample_docx_with_reused_image_across_paragraphs: Path, tmp_path: Path
+) -> None:
+    ws = OutputWorkspace.create(tmp_path / "ws", overwrite=False)
+
+    result = extract_docx(sample_docx_with_reused_image_across_paragraphs, ws)
+
+    content = ws.content_path.read_text(encoding="utf-8")
+    images = [p for p in ws.images_dir.iterdir() if p.name != "manifest.json"]
+    assert result.image_count == 2
+    assert len(images) == 1
+    assert content.count("![") == 2
+    assert "![docx-img-001]" in content
+    assert "![docx-img-002]" in content
+    assert content.count("images/docx-img-001") == 2
+
+
+def test_extract_docx_table_reuses_rids_from_body(
+    sample_docx_with_reused_image_in_body_and_table: Path, tmp_path: Path
+) -> None:
+    ws = OutputWorkspace.create(tmp_path / "ws", overwrite=False)
+
+    result = extract_docx(sample_docx_with_reused_image_in_body_and_table, ws)
+
+    content = ws.content_path.read_text(encoding="utf-8")
+    images = [p for p in ws.images_dir.iterdir() if p.name != "manifest.json"]
+    assert result.image_count == 2
+    assert len(images) == 1
+    assert content.count("![") == 2
+    assert content.count("images/docx-img-001") == 2
+
+
 def test_extract_docx_exports_inline_images(
     sample_docx_with_image: Path, tmp_path: Path
 ) -> None:

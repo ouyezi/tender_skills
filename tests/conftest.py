@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,62 @@ def sample_docx(tmp_path: Path) -> Path:
 @pytest.fixture
 def sample_docx_with_image(tmp_path: Path) -> Path:
     return _build_sample_docx(tmp_path / "sample_with_image.docx", include_image=True)
+
+
+@pytest.fixture
+def sample_docx_with_duplicate_embed(tmp_path: Path) -> Path:
+    path = tmp_path / "sample_duplicate_embed.docx"
+    image_path = tmp_path / "inline.png"
+    image_path.write_bytes(base64.b64decode(_TINY_PNG_BASE64))
+    doc = Document()
+    doc.add_paragraph("授权书附件")
+    doc.add_picture(str(image_path))
+    duplicate_paragraph = copy.deepcopy(doc.paragraphs[-1]._element)
+    doc.element.body.append(duplicate_paragraph)
+    doc.save(path)
+    return path
+
+
+@pytest.fixture
+def sample_docx_with_duplicate_blip_in_paragraph(tmp_path: Path) -> Path:
+    path = tmp_path / "sample_duplicate_blip_in_paragraph.docx"
+    image_path = tmp_path / "inline.png"
+    image_path.write_bytes(base64.b64decode(_TINY_PNG_BASE64))
+    doc = Document()
+    doc.add_picture(str(image_path))
+    blips = [node for node in doc.paragraphs[-1]._element.iter() if node.tag.endswith("}blip")]
+    if blips:
+        blips[0].getparent().append(copy.deepcopy(blips[0]))
+    doc.save(path)
+    return path
+
+
+@pytest.fixture
+def sample_docx_with_reused_image_across_paragraphs(tmp_path: Path) -> Path:
+    path = tmp_path / "sample_reused_image_across_paragraphs.docx"
+    image_path = tmp_path / "inline.png"
+    image_path.write_bytes(base64.b64decode(_TINY_PNG_BASE64))
+    doc = Document()
+    doc.add_paragraph("授权书")
+    doc.add_picture(str(image_path))
+    doc.add_paragraph("身份证明")
+    doc.add_picture(str(image_path))
+    doc.save(path)
+    return path
+
+
+@pytest.fixture
+def sample_docx_with_reused_image_in_body_and_table(tmp_path: Path) -> Path:
+    path = tmp_path / "sample_reused_image_in_body_and_table.docx"
+    image_path = tmp_path / "inline.png"
+    image_path.write_bytes(base64.b64decode(_TINY_PNG_BASE64))
+    doc = Document()
+    doc.add_paragraph("授权书正文")
+    doc.add_picture(str(image_path))
+    table = doc.add_table(rows=1, cols=1)
+    table.cell(0, 0).paragraphs[0].add_run().add_picture(str(image_path))
+    doc.save(path)
+    return path
 
 
 @pytest.fixture
