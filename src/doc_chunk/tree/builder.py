@@ -48,6 +48,41 @@ def _insert_index_for_synth_heading(nodes: list[DocumentTreeNode], block_idx: in
     return len(nodes)
 
 
+def _reparent_headings_from_outline(
+    outline: OutlineTree,
+    nodes: list[DocumentTreeNode],
+) -> list[DocumentTreeNode]:
+    """Align heading parent_id with outline.json after all headings exist."""
+    if is_flat_fallback_exempt(outline):
+        return nodes
+
+    outline_parent = {node.node_id: node.parent_id for node in outline.nodes}
+    heading_by_outline = {
+        node.outline_node_id: node.node_id
+        for node in nodes
+        if node.node_type == "heading" and node.outline_node_id
+    }
+
+    reparented: list[DocumentTreeNode] = []
+    for node in nodes:
+        if node.node_type != "heading" or not node.outline_node_id:
+            reparented.append(node)
+            continue
+
+        parent_outline_id = outline_parent.get(node.outline_node_id)
+        desired_parent_id = None
+        if parent_outline_id:
+            desired_parent_id = heading_by_outline.get(parent_outline_id)
+
+        if node.parent_id == desired_parent_id:
+            reparented.append(node)
+            continue
+
+        reparented.append(node.model_copy(update={"parent_id": desired_parent_id}))
+
+    return reparented
+
+
 def _synthesize_missing_headings(
     outline: OutlineTree,
     nodes: list[DocumentTreeNode],
@@ -161,5 +196,6 @@ def build_document_tree_with_warnings(
         )
 
     nodes, node_counter = _synthesize_missing_headings(outline, nodes, node_counter=node_counter)
+    nodes = _reparent_headings_from_outline(outline, nodes)
     warnings = _duplicate_anchor_warnings(outline)
     return DocumentTreeFile(nodes=nodes), warnings
