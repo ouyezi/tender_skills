@@ -140,6 +140,85 @@ def test_synthesized_headings_on_same_block_preserve_outline_order() -> None:
     assert tree.nodes.index(synth[0]) < tree.nodes.index(synth[1])
 
 
+def test_heading_parent_matches_outline_when_intermediate_heading_synthesized() -> None:
+    """Regression: child heading must not attach to wrong ancestor when parent heading is synthesized later."""
+    blocks = ContentBlocksFile(
+        blocks=[
+            ContentBlockRecord(
+                block_index=0,
+                block_type="paragraph",
+                char_start=0,
+                char_end=20,
+                text_preview="1.1 汇总表",
+            ),
+            ContentBlockRecord(
+                block_index=1,
+                block_type="image",
+                char_start=20,
+                char_end=40,
+                image_ref="images/scan.png",
+            ),
+            ContentBlockRecord(
+                block_index=2,
+                block_type="paragraph",
+                char_start=40,
+                char_end=70,
+                text_preview="1.2.1 合同扫描件",
+            ),
+        ]
+    )
+    outline = OutlineTree(
+        strategy="content_heuristic",
+        nodes=[
+            OutlineNode(
+                node_id="n1",
+                title="1.参选人业绩",
+                level=2,
+                parent_id=None,
+                sort_order=0,
+                anchor=Anchor(char_start=0, block_start=0),
+            ),
+            OutlineNode(
+                node_id="n2",
+                title="1.1 汇总表",
+                level=3,
+                parent_id="n1",
+                sort_order=1,
+                anchor=Anchor(char_start=0, block_start=0),
+            ),
+            OutlineNode(
+                node_id="n3",
+                title="1.2 合同扫描件",
+                level=3,
+                parent_id="n1",
+                sort_order=2,
+                anchor=Anchor(char_start=20, block_start=1),
+            ),
+            OutlineNode(
+                node_id="n4",
+                title="1.2.1 合同扫描件",
+                level=4,
+                parent_id="n3",
+                sort_order=3,
+                anchor=Anchor(char_start=40, block_start=2),
+            ),
+        ],
+    )
+    tree = build_document_tree(
+        blocks,
+        outline,
+        content_md="1.1 汇总表\n\n![](images/scan.png)\n\n1.2.1 合同扫描件\n\n",
+    )
+    headings = {
+        node.outline_node_id: node
+        for node in tree.nodes
+        if node.node_type == "heading" and node.outline_node_id
+    }
+    assert headings["n2"].parent_id == headings["n1"].node_id
+    assert headings["n3"].parent_id == headings["n1"].node_id
+    assert headings["n4"].parent_id == headings["n3"].node_id
+
+
 def test_duplicate_anchor_emits_warning() -> None:
     blocks = ContentBlocksFile(
         blocks=[
