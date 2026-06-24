@@ -9,7 +9,7 @@
 - 输出稳定 JSON schema（`schema_version: 1.0`）
 - 分块默认按 **outline 字符锚点**切片，与目录树强一致（无 Heading 样式标书可用）
 - Word 表格从 OOXML 物理网格解析，合并单元格去重后写入 `content.md`；完整网格与 LLM 友好文本存于 `tables/` 侧车
-- 提取阶段**不做**图片 OCR（图像语义由下游 skills 处理）
+- 提取阶段**不做**图片 OCR（`doc_chunk` 仅导出原图；**interpret v2** 在 `tender_insights` 内对引用图片做 OCR）
 
 完整需求见 [`docs/superpowers/specs/2026-06-15-doc-chunk-requirements.md`](docs/superpowers/specs/2026-06-15-doc-chunk-requirements.md)。  
 **tender_knowledge 集成**见 [`docs/superpowers/specs/2026-06-15-doc-chunk-tender-knowledge-integration.md`](docs/superpowers/specs/2026-06-15-doc-chunk-tender-knowledge-integration.md)。  
@@ -120,6 +120,16 @@ workspace/
 │   └── chunk-0001.json     # 单块（markdown + blocks + original_node_ids）
 ├── manifest.json           # 阶段状态与产物路径
 └── logs/
+```
+
+`tender-insights interpret` 会在工作区内追加（不修改 `content.md`）：
+
+```text
+workspace/
+├── interpretation.json     # schema 1.1：overview + 明细 + directory_outline
+└── interpret/
+    ├── source_content.md   # OCR enrichment 后正文
+    └── ocr_cache.json      # 图片 hash → OCR 文本
 ```
 
 ---
@@ -367,7 +377,7 @@ doc-chunk enrich ./out --classification-config ./my_classification.yaml
 | 章节深度 | 1–8 级 |
 | 续切阈值 | 默认 20,000 token/块，章节边界优先 |
 | 批量提取/流水线 | 单文件失败默认继续，汇总部分成功（退出码 2） |
-| 图片 | 仅导出原图；不做 OCR / image_notes |
+| 图片 | 仅导出原图到 `images/`；OCR 由 `tender-insights interpret` 可选处理（默认开启） |
 | Word 表格 | 从 OOXML 解析物理网格，合并单元格去重后写入 `content.md`；完整结构写入 `tables/` 侧车（`llm_text` + `records`） |
 | 表格回写 | `render_table_to_docx` / `render_sidecar_to_docx` 按物理网格与 `records` 写回 `.docx` |
 
@@ -375,9 +385,24 @@ doc-chunk enrich ./out --classification-config ./my_classification.yaml
 
 ## tender_insights（招标语义分析）
 
-在 `doc_chunk` 工作区之上，`tender_insights` 包提供招标业务语义分析：解读（废标/得分/投标风险/目录）、模版提取、法务审核。输出稳定 JSON（`schema_version: 1.0`），供 agent 与下游系统消费。
+在 `doc_chunk` 工作区之上，`tender_insights` 包提供招标业务语义分析：解读（废标/得分/投标风险/目录 + 概要）、模版提取、法务审核。解读产出 `interpretation.json`（**schema 1.1**），供 agent 与下游系统消费。
 
-**设计文档：** [`docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md`](docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md)
+**设计文档：**
+
+- v1 总览：[`docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md`](docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md)
+- **interpret v2**：[`docs/superpowers/specs/2026-06-24-interpret-v2-design.md`](docs/superpowers/specs/2026-06-24-interpret-v2-design.md) · [实现计划](docs/superpowers/plans/2026-06-24-interpret-v2.md)
+
+### interpret v2 要点
+
+| 项 | 说明 |
+|----|------|
+| 覆盖范围 | **全文分段**提取，不再依赖章节标题关键词路由 |
+| 分段策略 | 优先复用 `chunks/`；在 2k–12k tokens 间 merge/split，保证逻辑完整 |
+| LLM 调用 | 每段 **1 次**（固定 system prompt，一次返回四类明细）；合并后再 **1 次**生成概要 |
+| 概要 + 明细 | `overview`（维度摘要）+ `disqualification_items` / `scoring_items` / `bid_risk_items` / `directory_requirements` |
+| 目录格式 | `directory_outline`（树形，供下游目录生成）+ `directory_requirements.structure` |
+| 图片 OCR | 对 `content.md` 引用的图片调用 **qwen-vl-ocr**（hash 缓存、logo 跳过、大图压缩）；**不修改** `content.md` |
+| 边界 | 只改 `tender_insights`；`doc_chunk` 工作区只读 |
 
 ### 安装
 
@@ -421,28 +446,59 @@ python -m pytest tests/tender_insights/ -v
 
 | 命令 | 产物 | 说明 |
 |------|------|------|
-| `interpret` | `interpretation.json` | 废标项、得分项、`bid_risk_items`（投标视角）、目录要求 |
+| `interpret` | `interpretation.json` | schema **1.1**：概要 `overview`、四类明细、`directory_outline` |
+| `interpret` | `interpret/source_content.md` | OCR enrichment 后正文（锚点基准；不覆盖 `content.md`） |
+| `interpret` | `interpret/ocr_cache.json` | 图片 SHA256 → OCR 文本缓存 |
 | `template` | `templates/index.json` + `templates/*.md` | 嵌入正文模版切片 |
 | `legal` | `legal_review.json` | `risk_items`（法务合规）+ `pending_confirmations` |
 
 工作区 `manifest.json` 会追加对应 `stages` 与 `outputs` 条目。
 
+#### `interpretation.json` 主要字段（1.1）
+
+| 字段 | 说明 |
+|------|------|
+| `overview.summary` | 整份标书解读概要 |
+| `overview.*_summary` | 废标 / 得分 / 投标风险 / 目录 各维度摘要 |
+| `disqualification_items` | 废标项明细 |
+| `scoring_items` | 得分项明细 |
+| `bid_risk_items` | 投标视角风险明细 |
+| `directory_requirements` | 目录/文件组成要求（含可选 `structure` 树） |
+| `directory_outline` | 推荐目录树（`nodes[]`，供下游目录生成） |
+| `segment_count` | 全文分段数 |
+| `ocr_image_count` | OCR API 实际调用次数 |
+
 > **风险字段区分：** `interpretation.json` 的 `bid_risk_items` 是投标执行视角；`legal_review.json` 的 `risk_items` 是法务合规视角。两套分析独立运行，互不读取。
 
-切片送 LLM 前，`interpret` / `legal` / `template` 会通过 `slice_for_llm` 将章节内的 Markdown 表格替换为侧车 `llm_text`（人员双行表等合并单元格场景更准确）；无 `tables/` 侧车时仍使用 `content.md` 原文。
+切片送 LLM 前，`interpret` 会：① 对 `content.md` 引用图片做 OCR 写入 `interpret/source_content.md`；② 通过 `slice_for_llm` 将 Markdown 表格替换为侧车 `llm_text`。无 `tables/` 侧车时仍使用正文原文。
 
 ### LLM 配置
 
-解读与法务阶段需要大模型；模版分类规则优先、LLM 兜底。默认使用 **千问（Qwen）**：
+解读与法务阶段需要大模型；模版分类以规则为主。**interpret v2** 默认使用 **千问（Qwen）** 做文本解读，OCR 默认 **qwen-vl-ocr**：
 
 ```bash
 export LLM_PROVIDER=qwen
 export LLM_API_KEY=sk-...
 export LLM_BASE_URL=                    # 留空 → DashScope 兼容端点
-export LLM_MODEL=qwen3.6-plus           # 与 tender_knowledge 一致
+export LLM_MODEL=qwen3.6-plus           # 文本解读模型
+
+# interpret v2 OCR / 分段（可选）
+export OCR_ENABLED=true                 # 设为 false 跳过 OCR
+export OCR_MODEL=qwen-vl-ocr
+export SEGMENT_MIN_TOKENS=2000
+export SEGMENT_MAX_TOKENS=12000
 ```
 
 可与 `tender_knowledge` 共用同一 `.env`（`LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL`）。
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `OCR_ENABLED` | `true` | 是否对 `content.md` 引用图片做 OCR |
+| `OCR_MODEL` | `qwen-vl-ocr` | 视觉 OCR 模型 |
+| `SEGMENT_MIN_TOKENS` | `2000` | 过小分段合并阈值 |
+| `SEGMENT_MAX_TOKENS` | `12000` | 单段送 LLM 上限 |
+| `OCR_LOGO_MAX_BYTES` | `10240` | ≤ 此大小且宽/高 < 128px 视为 logo，跳过 OCR |
+| `OCR_MAX_LONG_EDGE` | `1500` | OCR 前图片长边压缩上限（像素） |
 
 ### Python API
 
@@ -503,6 +559,7 @@ python -m pytest tests/unit tests/contract -v
 | Python API | [`specs/001-document-extract-chunk/contracts/python-api.md`](specs/001-document-extract-chunk/contracts/python-api.md) |
 | 工作区 Schema | [`specs/001-document-extract-chunk/contracts/workspace-schemas.md`](specs/001-document-extract-chunk/contracts/workspace-schemas.md) |
 | **Word 表格提取（004）** | [`docs/superpowers/specs/2026-06-17-docx-table-extract-design.md`](docs/superpowers/specs/2026-06-17-docx-table-extract-design.md) |
+| **tender_insights interpret v2** | [`docs/superpowers/specs/2026-06-24-interpret-v2-design.md`](docs/superpowers/specs/2026-06-24-interpret-v2-design.md) |
 
 ---
 
@@ -523,7 +580,8 @@ python -m viewer
 ## 限制（v1）
 
 - 无生产级 Web UI（仅有本机调试 viewer）
-- 提取阶段无图片 OCR / 视觉 LLM
+- `doc_chunk` 提取阶段无图片 OCR（interpret v2 在 `tender_insights` 内对引用图片做 OCR）
 - 不写入 tender_knowledge 数据库
 - `.doc` / `.docm` 不直接提取，需先转为 `.docx`
 - PPT 不在首版支持范围
+- interpret 暂不支持多文件工作区合并分析；zip 附件包模版不在范围
