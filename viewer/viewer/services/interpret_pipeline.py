@@ -12,9 +12,10 @@ from doc_chunk.models.document import PipelineResult
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
 from tender_insights.api import extract_templates
-from tender_insights.common.section_router import SectionRouter, load_routing_rules
+from tender_insights.common.content_source import prepare_interpret_source
+from tender_insights.common.segment_planner import plan_segments
+from tender_insights.config import InsightsConfig
 from tender_insights.interpret.extractor import interpret_workspace
-import tender_insights.interpret.extractor as _interpret_extractor
 
 from viewer.models import SessionRecord
 from viewer.services.interpret_job_registry import InterpretJobRegistry
@@ -23,7 +24,6 @@ from viewer.services.session_store import SessionStore
 from viewer.services.workspace_merge import merge_workspaces, validate_merged_workspace
 
 _PIPELINE_SUBSTEPS = 4
-_ROUTING_PATH = Path(_interpret_extractor.__file__).with_name("routing.yaml")
 _STAGE_LABELS = {
     "extract": "提取正文",
     "outline": "构建目录",
@@ -51,13 +51,9 @@ class InterpretPipelineService:
     def _count_interpret_nodes(self, workspace_dir: Path) -> int:
         ws = OutputWorkspace.open_existing(workspace_dir)
         outline = OutlineTree.model_validate_json(ws.outline_path.read_text(encoding="utf-8"))
-        router = SectionRouter(load_routing_rules(_ROUTING_PATH))
-        route_keys = ["disqualification", "scoring", "bid_risk", "directory"]
-        target_node_ids: set[str] = set()
-        for key in route_keys:
-            for node in router.match_nodes(outline, key):
-                target_node_ids.add(node.node_id)
-        return len(target_node_ids)
+        config = InsightsConfig.from_env()
+        source = prepare_interpret_source(ws, config=config)
+        return len(plan_segments(ws, source, outline, config=config))
 
     def _report(
         self,
