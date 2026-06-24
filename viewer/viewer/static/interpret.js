@@ -157,6 +157,35 @@ function renderTabs() {
   }
 }
 
+function renderScoringChildren(children) {
+  if (!children?.length) {
+    return "";
+  }
+  const rows = children
+    .map((child) => {
+      const score =
+        child.max_score != null
+          ? `${child.max_score}${child.score_range ? `（${child.score_range}）` : ""}`
+          : child.score_range || "";
+      let html = `<li class="scoring-child">`;
+      html += `<strong>${escapeHtml(child.title || "细则")}</strong>`;
+      if (score) {
+        html += ` <span class="child-score">${escapeHtml(score)}</span>`;
+      }
+      if (child.criteria) {
+        html += `<p class="child-criteria">${escapeHtml(child.criteria)}</p>`;
+      }
+      if (child.source_excerpt) {
+        html += `<details class="child-excerpt"><summary>原文摘录</summary>`;
+        html += `<blockquote>${escapeHtml(child.source_excerpt)}</blockquote></details>`;
+      }
+      html += `</li>`;
+      return html;
+    })
+    .join("");
+  return `<ul class="scoring-children">${rows}</ul>`;
+}
+
 function renderCards() {
   const container = document.getElementById("result-cards");
   container.innerHTML = "";
@@ -196,6 +225,9 @@ function renderCards() {
     }
     if (item.criteria) {
       body += `<p><strong>评分标准：</strong>${escapeHtml(item.criteria)}</p>`;
+    }
+    if (tab.key === "scoring" && item.children?.length) {
+      body += renderScoringChildren(item.children);
     }
     if (item.severity) {
       body += `<p><span class="severity-badge ${item.severity}">${escapeHtml(item.severity)}</span> ${escapeHtml(item.risk_category || "")}</p>`;
