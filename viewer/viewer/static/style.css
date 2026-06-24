@@ -486,3 +486,23 @@ button:hover {
   color: var(--link, #06c);
   font-size: 0.9em;
 }
+
+.overview-panel {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel-bg, #f8f9fa);
+  border-radius: 6px;
+}
+
+.structure-tree {
+  margin: 0.25rem 0 0.5rem 1rem;
+  padding-left: 0.75rem;
+}
+
+.inferred-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #fff3cd;
+  font-size: 0.85em;
+}

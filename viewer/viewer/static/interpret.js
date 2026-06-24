@@ -157,6 +157,44 @@ function renderTabs() {
   }
 }
 
+function renderStructureTree(nodes, depth = 0) {
+  if (!nodes?.length) {
+    return "";
+  }
+  return `<ul class="structure-tree depth-${depth}">${nodes
+    .map((node) => {
+      const mandatory = node.mandatory === false ? "（可选）" : "";
+      const childHtml = node.children?.length ? renderStructureTree(node.children, depth + 1) : "";
+      return `<li>${escapeHtml(node.title || "")}${mandatory ? ` <em>${mandatory}</em>` : ""}${childHtml}</li>`;
+    })
+    .join("")}</ul>`;
+}
+
+function renderOverview(overview) {
+  const panel = document.getElementById("overview-panel");
+  const content = document.getElementById("overview-content");
+  if (!overview || !panel || !content) {
+    return;
+  }
+  const fields = [
+    ["summary", "总览"],
+    ["disqualification_summary", "废标项"],
+    ["scoring_summary", "得分项"],
+    ["bid_risk_summary", "风险"],
+    ["directory_summary", "目录"],
+  ];
+  const html = fields
+    .filter(([key]) => overview[key])
+    .map(([key, label]) => `<p><strong>${label}：</strong>${escapeHtml(overview[key])}</p>`)
+    .join("");
+  if (!html) {
+    panel.hidden = true;
+    return;
+  }
+  content.innerHTML = html;
+  panel.hidden = false;
+}
+
 function renderScoringChildren(children) {
   if (!children?.length) {
     return "";
@@ -235,6 +273,14 @@ function renderCards() {
     if (item.required_sections?.length) {
       body += `<p><strong>必填章节：</strong>${escapeHtml(item.required_sections.join("、"))}</p>`;
       body += `<p><strong>强制：</strong>${item.mandatory ? "是" : "否"}</p>`;
+    }
+    if (tab.key === "directory") {
+      if (item.inferred) {
+        body += `<p><span class="inferred-badge">推断目录</span></p>`;
+      }
+      if (item.structure?.length) {
+        body += renderStructureTree(item.structure);
+      }
     }
     if (item.source_excerpt) {
       body += `<blockquote>${escapeHtml(item.source_excerpt)}</blockquote>`;
@@ -321,6 +367,7 @@ async function loadResult(sessionId) {
   const result = await api(`/api/interpret/sessions/${sessionId}/result`);
   await resolveNodeIds(sessionId, result);
   state.result = result;
+  renderOverview(result.interpretation?.overview);
   document.getElementById("result-panel").hidden = false;
   renderTabs();
   renderCards();
