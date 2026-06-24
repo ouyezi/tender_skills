@@ -56,3 +56,42 @@ class SectionResponse(BaseModel):
     char_start: int
     char_end: int
     markdown: str
+
+
+class InterpretSessionRecord(BaseModel):
+    id: str
+    title: str
+    workspace_path: str
+    source_files: list[str]
+    status: Literal["pending", "running", "success", "failed"]
+    created_at: str
+    opened_at: str
+    error: str | None = None
+
+
+class InterpretJobState(BaseModel):
+    job_id: str
+    session_id: str
+    stage: Literal[
+        "pipeline_1",
+        "pipeline_2",
+        "merge",
+        "interpret",
+        "template",
+        "done",
+        "failed",
+    ]
+    message: str
+    status: Literal["running", "done", "failed"]
+    error: str | None = None
+
+
+class InterpretUploadResponse(BaseModel):
+    session_id: str
+    job_id: str
+
+
+class InterpretResultResponse(BaseModel):
+    interpretation: dict
+    templates: dict
+    source_files: list[str]
