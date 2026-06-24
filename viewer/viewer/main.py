@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from viewer.routes import content, jobs, sessions, upload, workspaces
+from viewer.routes import content, interpret, jobs, sessions, upload, workspaces
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -18,10 +18,15 @@ def create_app() -> FastAPI:
     app.include_router(workspaces.router, prefix="/api")
     app.include_router(content.router, prefix="/api")
     app.include_router(jobs.router, prefix="/api")
+    app.include_router(interpret.router, prefix="/api")
 
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/interpret")
+    def interpret_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "interpret.html")
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
