@@ -33,6 +33,15 @@ class DisqualificationItem(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class ScoringCriterionNode(BaseModel):
+    id: str
+    title: str
+    max_score: float | None = None
+    score_range: str | None = None
+    criteria: str
+    source_excerpt: str
+
+
 class ScoringItem(BaseModel):
     id: str
     title: str
@@ -40,6 +49,7 @@ class ScoringItem(BaseModel):
     max_score: float | None = None
     weight: str | None = None
     criteria: str
+    children: list[ScoringCriterionNode] = Field(default_factory=list)
     source_excerpt: str
     section_path: list[str]
     char_start: int | None = None
@@ -66,6 +76,7 @@ class DirectoryRequirement(BaseModel):
     required_sections: list[str]
     mandatory: bool
     structure: list[DirectoryStructureNode] = Field(default_factory=list)
+    inferred: bool = False
     source_excerpt: str
     section_path: list[str]
     char_start: int | None = None
@@ -103,7 +114,7 @@ class InterpretationLLMResponse(BaseModel):
 
 
 class InterpretationFile(InterpretationLLMResponse):
-    schema_version: Literal["1.0", "1.1"] = "1.1"
+    schema_version: Literal["1.0", "1.1", "1.2"] = "1.2"
     source_workspace: str
     analyzed_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     overview: InterpretationOverview
@@ -113,3 +124,4 @@ class InterpretationFile(InterpretationLLMResponse):
 
 
 DirectoryStructureNode.model_rebuild()
+ScoringCriterionNode.model_rebuild()
