@@ -221,6 +221,12 @@ def plan_segments(
     *,
     config: InsightsConfig,
 ) -> list[Segment]:
+    from tender_insights.common.scoring_segments import (
+        build_scoring_table_segments,
+        inject_scoring_tables_into_markdown,
+        is_scoring_section_path,
+    )
+
     source_md = source.markdown
     raw = _load_chunks(workspace, source_md)
     if raw is None:
@@ -241,6 +247,18 @@ def plan_segments(
         )
         if not llm_md.strip():
             continue
+        if (
+            source.blocks is not None
+            and is_scoring_section_path(seg.section_path)
+            and len(llm_md.strip()) < 200
+        ):
+            llm_md = inject_scoring_tables_into_markdown(
+                workspace,
+                markdown=llm_md,
+                char_start=seg.char_start,
+                char_end=seg.char_end,
+                blocks=source.blocks,
+            )
         segments.append(
             Segment(
                 segment_id=f"seg-{idx:03d}",
@@ -251,4 +269,20 @@ def plan_segments(
                 token_estimate=estimate_tokens(llm_md),
             )
         )
+
+    if source.blocks is not None:
+        host_path = segments[-1].section_path if segments else []
+        dedicated = build_scoring_table_segments(
+            workspace,
+            blocks=source.blocks,
+            host_section_path=host_path,
+            max_segments=5,
+        )
+        existing_markdown = {s.markdown.strip() for s in segments}
+        for seg in dedicated:
+            if seg.markdown.strip() in existing_markdown:
+                continue
+            segments.append(seg)
+            existing_markdown.add(seg.markdown.strip())
+
     return segments
