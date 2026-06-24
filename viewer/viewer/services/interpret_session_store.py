@@ -46,3 +46,11 @@ class InterpretSessionStore:
             raise KeyError(session_id)
         self._save(sessions)
         return updated
+
+    def delete(self, session_id: str) -> bool:
+        sessions = self._load()
+        kept = [s for s in sessions if s.id != session_id]
+        if len(kept) == len(sessions):
+            return False
+        self._save(kept)
+        return True

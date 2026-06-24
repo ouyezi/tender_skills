@@ -71,7 +71,12 @@ def interpret_workspace(
             )
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_segment_prompt(seg.segment_id, seg.section_path, seg.markdown)},
+            {"role": "user", "content": build_segment_prompt(
+                seg.segment_id,
+                seg.section_path,
+                seg.markdown,
+                keyword_match_enabled=config.segment_keyword_match_enabled,
+            )},
         ]
         call_type = "scoring_table" if seg.segment_id.startswith("seg-scoring-") else "segment"
         log_llm_prompt(
@@ -82,7 +87,14 @@ def interpret_workspace(
             section_path=seg.section_path,
             token_estimate=seg.token_estimate,
         )
-        batch = extract_json_model(client, messages, InterpretationLLMResponse, max_retries=config.max_retries)
+        batch = extract_json_model(
+            client,
+            messages,
+            InterpretationLLMResponse,
+            max_retries=config.max_retries,
+            normalize_context={"section_path": seg.section_path},
+            log_context={"call_type": call_type, "segment_id": seg.segment_id},
+        )
         aggregated.disqualification_items.extend(batch.disqualification_items)
         aggregated.scoring_items.extend(batch.scoring_items)
         aggregated.bid_risk_items.extend(batch.bid_risk_items)
@@ -109,7 +121,15 @@ def interpret_workspace(
                 "total": max(total_segments, 1),
             },
         )
-    overview = build_overview(client, dq=dq, sc=sc, br=br, dr=dr, max_retries=config.max_retries)
+    overview = build_overview(
+        client,
+        dq=dq,
+        sc=sc,
+        br=br,
+        dr=dr,
+        max_retries=config.max_retries,
+        workspace=str(workspace.root),
+    )
     directory_outline = build_directory_outline(dr)
 
     result = InterpretationFile(

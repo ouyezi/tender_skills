@@ -6,6 +6,15 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Keys from project `.env` override shell defaults (model, timeouts, feature flags).
+_PROJECT_ENV_OVERRIDE_PREFIXES = ("LLM_", "OCR_", "SEGMENT_", "INTERPRET_")
+
+
+def _should_override_from_project_env(key: str) -> bool:
+    if key == "LLM_API_KEY":
+        return False
+    return any(key.startswith(prefix) for prefix in _PROJECT_ENV_OVERRIDE_PREFIXES)
+
 
 def _parse_env_line(line: str) -> tuple[str, str] | None:
     stripped = line.strip()
@@ -26,7 +35,12 @@ def _parse_env_line(line: str) -> tuple[str, str] | None:
 
 
 def load_project_env() -> Path | None:
-    """Load repo `.env` into os.environ (does not override existing vars)."""
+    """Load repo `.env` into os.environ.
+
+    ``LLM_*`` / ``OCR_*`` / ``SEGMENT_*`` / ``INTERPRET_*`` always follow the
+    project file so local edits take effect after restart. Other keys use
+    ``setdefault`` and do not override an already-exported shell value.
+    """
     candidates = [Path.cwd() / ".env", _REPO_ROOT / ".env"]
     for path in candidates:
         if not path.is_file():
@@ -36,7 +50,10 @@ def load_project_env() -> Path | None:
             if parsed is None:
                 continue
             key, value = parsed
-            os.environ.setdefault(key, value)
+            if _should_override_from_project_env(key):
+                os.environ[key] = value
+            else:
+                os.environ.setdefault(key, value)
         return path
     return None
 

@@ -110,13 +110,54 @@ def test_plan_segments_injects_scoring_table_into_short_section(tmp_path) -> Non
         ws,
         source,
         outline,
-        config=InsightsConfig(segment_min_tokens=10, segment_max_tokens=5000),
+        config=InsightsConfig(
+            segment_min_tokens=10,
+            segment_max_tokens=5000,
+            segment_keyword_match_enabled=True,
+        ),
     )
     scoring_seg = next(
         s for s in segments if is_scoring_section_path(s.section_path) or "商品方案" in s.markdown
     )
     assert "商品方案" in scoring_seg.markdown
     assert "0-2分" in scoring_seg.markdown
+
+
+def test_plan_segments_merges_small_segment_with_following(tmp_path) -> None:
+    ws = OutputWorkspace.create(tmp_path / "ws", overwrite=True)
+    md = "# Tiny\n\nhi\n\n# Big\n\n" + ("word " * 200)
+    ws.content_path.write_text(md, encoding="utf-8")
+    _write_outline(ws)
+    source = InterpretSource(markdown=md, source_path=ws.content_path, blocks=None, ocr_image_count=0)
+    outline = OutlineTree.model_validate_json(ws.outline_path.read_text(encoding="utf-8"))
+
+    segments = plan_segments(
+        ws,
+        source,
+        outline,
+        config=InsightsConfig(segment_min_tokens=50, segment_max_tokens=5000),
+    )
+    merged = next(s for s in segments if "hi" in s.markdown and "word" in s.markdown)
+    assert merged.char_start == 0
+
+
+def test_plan_segments_merges_short_heading_with_next_section(tmp_path) -> None:
+    ws = OutputWorkspace.create(tmp_path / "ws", overwrite=True)
+    body = "采购文件\n\n" + ("须知正文 " * 80)
+    md = f"# 第二章 响应人须知\n\n## 采购文件\n\n{body}"
+    ws.content_path.write_text(md, encoding="utf-8")
+    _write_outline(ws)
+    source = InterpretSource(markdown=md, source_path=ws.content_path, blocks=None, ocr_image_count=0)
+    outline = OutlineTree.model_validate_json(ws.outline_path.read_text(encoding="utf-8"))
+
+    segments = plan_segments(
+        ws,
+        source,
+        outline,
+        config=InsightsConfig(segment_min_tokens=50, segment_max_tokens=5000),
+    )
+    assert any("须知正文" in s.markdown for s in segments)
+    assert not any(s.markdown.strip() == "采购文件" for s in segments)
 
 
 def test_plan_segments_appends_scoring_dedicated_segments(tmp_path) -> None:
@@ -160,7 +201,11 @@ def test_plan_segments_appends_scoring_dedicated_segments(tmp_path) -> None:
         ws,
         source,
         outline,
-        config=InsightsConfig(segment_min_tokens=10, segment_max_tokens=5000),
+        config=InsightsConfig(
+            segment_min_tokens=10,
+            segment_max_tokens=5000,
+            segment_keyword_match_enabled=True,
+        ),
     )
     dedicated = [s for s in segments if s.segment_id.startswith("seg-scoring-")]
     assert len(dedicated) == 1

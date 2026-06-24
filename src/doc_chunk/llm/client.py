@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal, Protocol
 
+from doc_chunk.llm.completion import LLMCompletionResult
+
 
 class LLMClient(Protocol):
     def complete(
@@ -9,8 +11,16 @@ class LLMClient(Protocol):
         messages: list[dict[str, str]],
         *,
         response_format: Literal["text", "json"] = "text",
-        timeout: float = 60.0,
+        timeout: float | None = None,
     ) -> str: ...
+
+    def complete_with_meta(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        response_format: Literal["text", "json"] = "text",
+        timeout: float | None = None,
+    ) -> LLMCompletionResult: ...
 
 
 class FakeLLMClient:
@@ -27,8 +37,21 @@ class FakeLLMClient:
         messages: list[dict[str, str]],
         *,
         response_format: Literal["text", "json"] = "text",
-        timeout: float = 60.0,
+        timeout: float | None = None,
     ) -> str:
+        return self.complete_with_meta(
+            messages,
+            response_format=response_format,
+            timeout=timeout,
+        ).text
+
+    def complete_with_meta(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        response_format: Literal["text", "json"] = "text",
+        timeout: float | None = None,
+    ) -> LLMCompletionResult:
         self.calls.append(
             {
                 "messages": messages,
@@ -37,5 +60,7 @@ class FakeLLMClient:
             }
         )
         if self._responses:
-            return self._responses.pop(0)
-        return self.default_response
+            text = self._responses.pop(0)
+        else:
+            text = self.default_response
+        return LLMCompletionResult(text=text)

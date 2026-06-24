@@ -3,7 +3,7 @@ import logging
 
 import pytest
 
-from tender_insights.interpret.llm_logging import log_llm_prompt
+from tender_insights.interpret.llm_logging import log_llm_attempt, log_llm_prompt
 
 
 def test_log_llm_prompt_emits_full_messages(caplog, monkeypatch, tmp_path) -> None:
@@ -37,3 +37,43 @@ def test_log_llm_prompt_disabled(monkeypatch, caplog) -> None:
     with caplog.at_level(logging.INFO, logger="tender_insights.interpret.llm"):
         log_llm_prompt(call_type="overview", messages=[{"role": "user", "content": "x"}])
     assert caplog.records == []
+
+
+def test_log_llm_prompt_appends_jsonl(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("INTERPRET_LOG_PROMPTS", raising=False)
+    jsonl_path = tmp_path / "calls.jsonl"
+    monkeypatch.setenv("INTERPRET_LOG_JSONL", str(jsonl_path))
+
+    messages = [{"role": "user", "content": "hello"}]
+    log_llm_prompt(call_type="segment", messages=messages, segment_id="seg-a")
+
+    lines = jsonl_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["segment_id"] == "seg-a"
+    assert record["messages"] == messages
+
+
+def test_log_llm_attempt_appends_jsonl(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("INTERPRET_LOG_PROMPTS", raising=False)
+    jsonl_path = tmp_path / "calls.jsonl"
+    monkeypatch.setenv("INTERPRET_LOG_JSONL", str(jsonl_path))
+
+    log_llm_attempt(
+        call_type="segment",
+        segment_id="seg-a",
+        attempt=0,
+        success=False,
+        response_raw='{"scoring_items":[',
+        validation_error="json decode",
+        usage={"prompt_tokens": 1, "prompt_tokens_details": {"cached_tokens": 1}},
+        model="qwen3.7-max",
+        stream=True,
+        duration_ms=1234.5,
+    )
+
+    record = json.loads(jsonl_path.read_text(encoding="utf-8").strip())
+    assert record["event"] == "attempt"
+    assert record["success"] is False
+    assert record["usage"]["prompt_tokens_details"]["cached_tokens"] == 1
+    assert record["duration_ms"] == 1234.5

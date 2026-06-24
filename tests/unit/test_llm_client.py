@@ -39,7 +39,7 @@ def test_resolve_llm_settings_defaults_to_qwen(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     monkeypatch.delenv("OPENAI_API_BASE", raising=False)
     _, model, base_url = resolve_llm_settings_from_env()
-    assert model == "qwen-plus"
+    assert model == "qwen3.7-max"
     assert base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 

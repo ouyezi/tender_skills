@@ -20,12 +20,13 @@ def _env_int(key: str, default: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class InsightsConfig:
-    llm_model: str = "qwen-plus"
+    llm_model: str = "qwen3.7-max"
     max_retries: int = 2
     ocr_enabled: bool = True
     ocr_model: str = "qwen-vl-ocr"
     segment_min_tokens: int = 2000
     segment_max_tokens: int = 12000
+    segment_keyword_match_enabled: bool = False
     ocr_logo_max_bytes: int = 10240
     ocr_logo_max_px: int = 128
     ocr_max_long_edge: int = 1500
@@ -33,7 +34,7 @@ class InsightsConfig:
     @classmethod
     def from_env(cls) -> InsightsConfig:
         provider = (os.environ.get("LLM_PROVIDER") or "qwen").lower()
-        default_model = "qwen-plus" if provider == "qwen" else "gpt-4o-mini"
+        default_model = "qwen3.7-max" if provider == "qwen" else "gpt-4o-mini"
         return cls(
             llm_model=(
                 os.environ.get("LLM_MODEL")
@@ -44,6 +45,7 @@ class InsightsConfig:
             ocr_model=os.environ.get("OCR_MODEL") or "qwen-vl-ocr",
             segment_min_tokens=_env_int("SEGMENT_MIN_TOKENS", 2000),
             segment_max_tokens=_env_int("SEGMENT_MAX_TOKENS", 12000),
+            segment_keyword_match_enabled=_env_bool("INTERPRET_SEGMENT_KEYWORD_MATCH", False),
             ocr_logo_max_bytes=_env_int("OCR_LOGO_MAX_BYTES", 10240),
             ocr_logo_max_px=_env_int("OCR_LOGO_MAX_PX", 128),
             ocr_max_long_edge=_env_int("OCR_MAX_LONG_EDGE", 1500),

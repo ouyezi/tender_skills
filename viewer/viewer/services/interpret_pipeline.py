@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -16,6 +18,7 @@ from tender_insights.common.content_source import prepare_interpret_source
 from tender_insights.common.segment_planner import plan_segments
 from tender_insights.config import InsightsConfig
 from tender_insights.interpret.extractor import interpret_workspace
+from tender_insights.interpret.llm_logging import LLM_CALLS_FILENAME
 
 from viewer.models import SessionRecord
 from viewer.services.interpret_job_registry import InterpretJobRegistry
@@ -24,6 +27,9 @@ from viewer.services.session_store import SessionStore
 from viewer.services.workspace_merge import merge_workspaces, validate_merged_workspace
 
 _PIPELINE_SUBSTEPS = 4
+_LOGGER = logging.getLogger("viewer.interpret")
+
+
 _STAGE_LABELS = {
     "extract": "提取正文",
     "outline": "构建目录",
@@ -180,6 +186,13 @@ class InterpretPipelineService:
 
             ws = OutputWorkspace.open_existing(workspace_dir)
             client = self._llm_client_factory()
+            model_name = getattr(client, "model", None)
+            if model_name:
+                _LOGGER.info("interpret_llm_client model=%s", model_name)
+
+            llm_log_path = workspace_dir / LLM_CALLS_FILENAME
+            llm_log_path.unlink(missing_ok=True)
+            os.environ["INTERPRET_LOG_JSONL"] = str(llm_log_path)
 
             def _interpret_progress(_stage: str, payload: dict) -> None:
                 seg_current = int(payload.get("current", 0))

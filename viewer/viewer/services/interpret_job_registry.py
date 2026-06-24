@@ -43,3 +43,8 @@ class InterpretJobRegistry:
         updated = job.model_copy(update=fields)
         self._jobs[job_id] = updated
         return updated
+
+    def remove_for_session(self, session_id: str) -> None:
+        self._jobs = {
+            job_id: job for job_id, job in self._jobs.items() if job.session_id != session_id
+        }

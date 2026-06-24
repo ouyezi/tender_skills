@@ -3,6 +3,7 @@ const state = {
   pollTimer: null,
   result: null,
   activeTab: "disqualification",
+  llmCalls: [],
 };
 
 const STAGES = ["pipeline_1", "pipeline_2", "merge", "interpret", "template"];
@@ -20,6 +21,7 @@ const TABS = [
   { key: "risk", label: "风险", field: "bid_risk_items" },
   { key: "directory", label: "目录要求", field: "directory_requirements" },
   { key: "templates", label: "模版", field: null },
+  { key: "llm", label: "LLM 调用", field: null },
 ];
 
 async function api(path, options = {}) {
@@ -110,6 +112,10 @@ async function pollJob(jobId, dualFile) {
         const job = await api(`/api/interpret/jobs/${jobId}`);
         if (job.status === "running") {
           renderProgress(job, dualFile);
+          if (job.stage === "interpret" || job.stage === "template") {
+            showResultPanel();
+            await loadLlmCalls(job.session_id);
+          }
         }
         if (job.status === "done") {
           clearInterval(state.pollTimer);
@@ -124,6 +130,10 @@ async function pollJob(jobId, dualFile) {
           clearInterval(state.pollTimer);
           state.pollTimer = null;
           hideProgress();
+          state.result = null;
+          document.getElementById("overview-panel").hidden = true;
+          await loadLlmCalls(job.session_id);
+          showResultPanel();
           const msg = job.error || job.message || "解读失败";
           const needsApiKey =
             /LLM_API_KEY|OPENAI_API_KEY|required for LLM|LLMUnavailable/i.test(msg) &&
@@ -146,8 +156,7 @@ async function resumeRunningSession(sessionId) {
   try {
     const job = await api(`/api/interpret/sessions/${sessionId}/job`);
     if (job.status === "running") {
-      state.sessionId = sessionId;
-      await pollJob(job.job_id, job.dual_file);
+      await enterRunningSession(sessionId, job.job_id, job.dual_file);
     }
   } catch {
     // no active job for this session
@@ -162,10 +171,17 @@ function renderTabs() {
     btn.type = "button";
     btn.className = state.activeTab === tab.key ? "tab active" : "tab";
     btn.textContent = tab.label;
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       state.activeTab = tab.key;
+      if (state.sessionId) {
+        showResultPanel();
+      }
       renderTabs();
-      renderCards();
+      if (tab.key === "llm" && state.sessionId) {
+        await loadLlmCalls(state.sessionId);
+      } else {
+        renderCards();
+      }
     });
     tabBar.appendChild(btn);
   }
@@ -242,7 +258,17 @@ function renderCards() {
   const container = document.getElementById("result-cards");
   container.innerHTML = "";
   const tab = TABS.find((t) => t.key === state.activeTab);
-  if (!tab || !state.result) {
+  if (!tab) {
+    return;
+  }
+
+  if (tab.key === "llm") {
+    renderLlmCalls(container);
+    return;
+  }
+
+  if (!state.result) {
+    container.innerHTML = '<p class="empty-tab">解读进行中，请稍候…</p>';
     return;
   }
 
@@ -325,6 +351,82 @@ function renderCards() {
   }
 }
 
+function renderLlmCalls(container) {
+  if (!state.llmCalls.length) {
+    const hint = state.result ? "暂无 LLM 调用记录" : "解读进行中，LLM 调用将实时更新…";
+    container.innerHTML = `<p class="empty-tab">${hint}</p>`;
+    return;
+  }
+  for (const call of state.llmCalls) {
+    const card = document.createElement("article");
+    card.className = "result-card llm-call-card";
+    const path = (call.section_path || []).join(" › ");
+    const title = call.segment_id || call.call_type || "调用";
+    let body = `<h3>${escapeHtml(title)}</h3>`;
+    body += `<p class="card-path">${escapeHtml(call.call_type || "")}${path ? ` · ${escapeHtml(path)}` : ""}</p>`;
+    if (call.timestamp) {
+      body += `<p class="card-meta">${escapeHtml(call.timestamp)}</p>`;
+    }
+    if (call.token_estimate != null) {
+      body += `<p><strong>token 估计：</strong>${call.token_estimate}</p>`;
+    }
+    if (call.messages?.length) {
+      body += `<details open><summary>Prompt（${call.messages.length} 条消息）</summary><pre class="llm-payload">${escapeHtml(
+        JSON.stringify(call.messages, null, 2),
+      )}</pre></details>`;
+    }
+    if (call.response) {
+      body += `<details><summary>Response（校验通过）</summary><pre class="llm-payload">${escapeHtml(call.response)}</pre></details>`;
+    }
+    if (call.attempts?.length) {
+      body += `<details><summary>调用尝试（${call.attempts.length} 次）</summary>`;
+      for (const att of call.attempts) {
+        const status = att.success ? "成功" : "失败";
+        const idx = (att.attempt ?? 0) + 1;
+        body += `<div class="llm-attempt">`;
+        body += `<p><strong>第 ${idx} 次 · ${status}</strong>`;
+        if (att.duration_ms != null) {
+          body += ` · ${att.duration_ms} ms`;
+        }
+        if (att.stream != null) {
+          body += ` · ${att.stream ? "流式" : "非流式"}`;
+        }
+        body += `</p>`;
+        if (att.model) {
+          body += `<p><strong>模型：</strong>${escapeHtml(att.model)}</p>`;
+        }
+        if (att.finish_reason) {
+          body += `<p><strong>结束原因：</strong>${escapeHtml(att.finish_reason)}</p>`;
+        }
+        if (att.usage) {
+          const cached =
+            att.usage.prompt_tokens_details?.cached_tokens ??
+            att.usage.cached_tokens ??
+            null;
+          body += `<p><strong>Token 用量：</strong>`;
+          if (cached != null) {
+            body += ` cache=${cached}`;
+          }
+          body += `</p>`;
+          body += `<pre class="llm-payload">${escapeHtml(JSON.stringify(att.usage, null, 2))}</pre>`;
+        }
+        if (att.validation_error) {
+          body += `<p class="card-error"><strong>校验失败（响应已收到）：</strong>${escapeHtml(att.validation_error)}</p>`;
+        }
+        if (att.response_raw) {
+          const label = att.success ? "原始响应" : "原始响应（未通过校验）";
+          body += `<details${att.success ? "" : " open"}><summary>${label}（${att.response_chars ?? att.response_raw.length} 字符）</summary>`;
+          body += `<pre class="llm-payload">${escapeHtml(att.response_raw)}</pre></details>`;
+        }
+        body += `</div>`;
+      }
+      body += `</details>`;
+    }
+    card.innerHTML = body;
+    container.appendChild(card);
+  }
+}
+
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = String(text);
@@ -376,15 +478,38 @@ function flattenNodes(nodes, out = []) {
   return out;
 }
 
+function showResultPanel() {
+  document.getElementById("result-panel").hidden = false;
+  renderTabs();
+  renderCards();
+}
+
+async function loadLlmCalls(sessionId) {
+  if (!sessionId) {
+    state.llmCalls = [];
+    return;
+  }
+  state.llmCalls = await api(`/api/interpret/sessions/${sessionId}/llm-calls`).catch(() => []);
+  renderCards();
+}
+
+async function enterRunningSession(sessionId, jobId, dualFile) {
+  state.sessionId = sessionId;
+  state.result = null;
+  document.getElementById("overview-panel").hidden = true;
+  showResultPanel();
+  await loadLlmCalls(sessionId);
+  await pollJob(jobId, dualFile);
+}
+
 async function loadResult(sessionId) {
   state.sessionId = sessionId;
   const result = await api(`/api/interpret/sessions/${sessionId}/result`);
   await resolveNodeIds(sessionId, result);
   state.result = result;
+  await loadLlmCalls(sessionId);
   renderOverview(result.interpretation?.overview);
-  document.getElementById("result-panel").hidden = false;
-  renderTabs();
-  renderCards();
+  showResultPanel();
 }
 
 async function openSourcePanel(sessionId, nodeId) {
@@ -424,6 +549,9 @@ document.getElementById("start-btn").addEventListener("click", async () => {
     renderProgress({ stage: "pipeline_1", message: "上传完成，开始处理…", progress_percent: 0 }, dualFile);
     const result = await api("/api/interpret/upload", { method: "POST", body: form });
     state.sessionId = result.session_id;
+    state.result = null;
+    document.getElementById("overview-panel").hidden = true;
+    showResultPanel();
     await refreshSessions();
     await pollJob(result.job_id, dualFile);
   } catch (err) {
@@ -451,10 +579,45 @@ document.getElementById("interpret-session-select").addEventListener("change", a
   if (session.status === "success") {
     await loadResult(sessionId);
   } else if (session.status === "running") {
-    document.getElementById("result-panel").hidden = true;
     await resumeRunningSession(sessionId);
+    if (!state.pollTimer) {
+      state.result = null;
+      document.getElementById("overview-panel").hidden = true;
+      await loadLlmCalls(sessionId);
+      showResultPanel();
+    }
   } else {
+    state.result = null;
+    document.getElementById("overview-panel").hidden = true;
+    await loadLlmCalls(sessionId);
+    showResultPanel();
+  }
+});
+
+document.getElementById("delete-interpret-session-btn").addEventListener("click", async () => {
+  if (!state.sessionId) {
+    setError("请先选择会话");
+    return;
+  }
+  if (!confirm("将永久删除该会话、工作区与上传文件，是否继续？")) {
+    return;
+  }
+  try {
+    await api(`/api/interpret/sessions/${state.sessionId}`, { method: "DELETE" });
+    if (state.pollTimer) {
+      clearInterval(state.pollTimer);
+      state.pollTimer = null;
+    }
+    state.sessionId = null;
+    state.result = null;
+    state.llmCalls = [];
+    hideProgress();
     document.getElementById("result-panel").hidden = true;
+    setError("", true);
+    await refreshSessions();
+  } catch (err) {
+    setError(err.message || "删除会话失败");
+    console.error(err);
   }
 });
 

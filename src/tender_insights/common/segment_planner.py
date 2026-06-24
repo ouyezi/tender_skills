@@ -35,9 +35,6 @@ class _RawSegment:
     token_estimate: int
 
 
-def _path_prefix(path: list[str], depth: int = 2) -> tuple[str, ...]:
-    return tuple(path[:depth])
-
 
 def _find_char_range(source_md: str, markdown: str, hint_start: int = 0) -> tuple[int, int]:
     needle = markdown.strip()
@@ -165,24 +162,26 @@ def _load_chunks(workspace: OutputWorkspace, source_md: str) -> list[_RawSegment
 
 
 def _merge_small_segments(raw: list[_RawSegment], min_tokens: int) -> list[_RawSegment]:
+    """Merge undersized segments with subsequent chunks until min_tokens is reached."""
     if not raw:
         return raw
-    merged: list[_RawSegment] = [raw[0]]
-    for seg in raw[1:]:
-        prev = merged[-1]
-        combined_tokens = prev.token_estimate + seg.token_estimate
-        same_prefix = _path_prefix(prev.section_path) == _path_prefix(seg.section_path)
-        if combined_tokens < min_tokens and same_prefix:
-            combined_md = prev.markdown.rstrip() + "\n\n" + seg.markdown.lstrip()
-            merged[-1] = _RawSegment(
-                section_path=prev.section_path or seg.section_path,
+    merged: list[_RawSegment] = []
+    idx = 0
+    while idx < len(raw):
+        current = raw[idx]
+        while current.token_estimate < min_tokens and idx + 1 < len(raw):
+            nxt = raw[idx + 1]
+            combined_md = current.markdown.rstrip() + "\n\n" + nxt.markdown.lstrip()
+            current = _RawSegment(
+                section_path=current.section_path or nxt.section_path,
                 markdown=combined_md,
-                char_start=prev.char_start,
-                char_end=seg.char_end,
+                char_start=current.char_start,
+                char_end=nxt.char_end,
                 token_estimate=estimate_tokens(combined_md),
             )
-        else:
-            merged.append(seg)
+            idx += 1
+        merged.append(current)
+        idx += 1
     return merged
 
 
@@ -223,8 +222,9 @@ def plan_segments(
 ) -> list[Segment]:
     from tender_insights.common.scoring_segments import (
         build_scoring_table_segments,
+        expand_short_segment_markdown,
         inject_scoring_tables_into_markdown,
-        is_scoring_section_path,
+        is_scoring_host_section_path,
     )
 
     source_md = source.markdown
@@ -237,6 +237,7 @@ def plan_segments(
     raw = _split_large_segments(raw, config.segment_max_tokens)
 
     segments: list[Segment] = []
+    keyword_match = config.segment_keyword_match_enabled
     for idx, seg in enumerate(raw, start=1):
         llm_md = slice_for_llm(
             workspace,
@@ -245,11 +246,20 @@ def plan_segments(
             seg.char_end,
             blocks=source.blocks,
         )
+        if keyword_match:
+            llm_md = expand_short_segment_markdown(
+                workspace,
+                source_md,
+                seg,
+                llm_md,
+                blocks=source.blocks,
+            )
         if not llm_md.strip():
             continue
         if (
-            source.blocks is not None
-            and is_scoring_section_path(seg.section_path)
+            keyword_match
+            and source.blocks is not None
+            and is_scoring_host_section_path(seg.section_path)
             and len(llm_md.strip()) < 200
         ):
             llm_md = inject_scoring_tables_into_markdown(
@@ -270,7 +280,7 @@ def plan_segments(
             )
         )
 
-    if source.blocks is not None:
+    if keyword_match and source.blocks is not None:
         host_path = segments[-1].section_path if segments else []
         dedicated = build_scoring_table_segments(
             workspace,
