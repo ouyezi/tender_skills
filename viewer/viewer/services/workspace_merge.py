@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import shutil
-from datetime import UTC, datetime
 from pathlib import Path
 
 from doc_chunk.models.outline import OutlineNode, OutlineTree
@@ -96,11 +95,9 @@ def merge_workspaces(
         merged_content = head + sep + tail
         target_ws.content_path.write_text(merged_content, encoding="utf-8")
 
-    manifest = {
-        "sources": [file1_name, file2_name],
-        "merged_at": datetime.now(UTC).isoformat(),
-    }
-    (target_ws.root / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    if ws1.manifest_path.exists():
+        shutil.copy2(ws1.manifest_path, target_ws.manifest_path)
+
     return target_ws.root
 
 

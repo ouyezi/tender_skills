@@ -21,6 +21,7 @@ from viewer.models import (
     InterpretSessionRecord,
     InterpretUploadResponse,
 )
+from viewer.services.outline_tree import build_outline_response
 from viewer.services.section_slice import slice_section
 from viewer.services.workspace import validate_workspace
 
@@ -140,6 +141,14 @@ def get_interpret_result(session_id: str) -> InterpretResultResponse:
         templates=templates,
         source_files=session.source_files,
     )
+
+
+@router.get("/sessions/{session_id}/outline")
+def get_interpret_outline(session_id: str) -> dict:
+    workspace = _load_interpret_workspace(session_id)
+    outline = OutlineTree.model_validate_json((workspace / "outline.json").read_text(encoding="utf-8"))
+    content_md = (workspace / "content.md").read_text(encoding="utf-8")
+    return build_outline_response(outline, content_md).model_dump()
 
 
 @router.get("/sessions/{session_id}/sections/{node_id}")

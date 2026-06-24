@@ -12,8 +12,10 @@ from doc_chunk.models.document import PipelineResult
 from doc_chunk.workspace.layout import OutputWorkspace
 from tender_insights.api import extract_templates, interpret_document
 
+from viewer.models import SessionRecord
 from viewer.services.interpret_job_registry import InterpretJobRegistry
 from viewer.services.interpret_session_store import InterpretSessionStore
+from viewer.services.session_store import SessionStore
 from viewer.services.workspace_merge import merge_workspaces, validate_merged_workspace
 
 
@@ -23,11 +25,13 @@ class InterpretPipelineService:
         *,
         sessions: InterpretSessionStore,
         jobs: InterpretJobRegistry,
+        viewer_sessions: SessionStore | None = None,
         run_pipeline_fn: Callable[..., PipelineResult] = run_pipeline,
         llm_client_factory: Callable[[], LLMClient] | None = None,
     ) -> None:
         self._sessions = sessions
         self._jobs = jobs
+        self._viewer_sessions = viewer_sessions
         self._run_pipeline = run_pipeline_fn
         self._llm_client_factory = llm_client_factory or create_llm_client_from_env
 
@@ -82,7 +86,23 @@ class InterpretPipelineService:
             self._jobs.update(job_id, stage="template", message="extracting templates")
             await asyncio.to_thread(extract_templates, ws, client=client)
             self._jobs.update(job_id, stage="done", message="complete", status="done")
-            self._sessions.update(session_id, status="success", error=None)
+            session = self._sessions.update(session_id, status="success", error=None)
+            if self._viewer_sessions is not None:
+                from datetime import UTC, datetime
+
+                now = datetime.now(UTC).isoformat()
+                self._viewer_sessions.add(
+                    SessionRecord(
+                        id=session_id,
+                        title=session.title,
+                        workspace_path=str(workspace_dir),
+                        source_type="upload",
+                        status="success",
+                        created_at=session.created_at,
+                        opened_at=now,
+                        error=None,
+                    )
+                )
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             self._jobs.update(
