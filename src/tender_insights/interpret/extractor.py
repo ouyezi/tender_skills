@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
@@ -29,15 +31,39 @@ def interpret_workspace(
     client: LLMClient,
     *,
     config: InsightsConfig | None = None,
+    on_progress: Callable[[str, dict], None] | None = None,
 ) -> InterpretationFile:
     config = config or InsightsConfig.from_env()
     outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
 
     source = prepare_interpret_source(workspace, config=config)
     segments = plan_segments(workspace, source, outline, config=config)
+    total_segments = len(segments)
+
+    if on_progress:
+        on_progress(
+            "interpret",
+            {
+                "message": f"开始解读，共 {total_segments} 个分段待分析",
+                "current": 0,
+                "total": max(total_segments, 1),
+            },
+        )
 
     aggregated = InterpretationLLMResponse()
-    for seg in segments:
+    for index, seg in enumerate(segments, start=1):
+        title = seg.section_path[-1] if seg.section_path else seg.segment_id
+        if on_progress:
+            on_progress(
+                "interpret",
+                {
+                    "message": f"解读分段 ({index}/{total_segments})",
+                    "detail": title,
+                    "current": index,
+                    "total": max(total_segments, 1),
+                    "node_id": seg.segment_id,
+                },
+            )
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_segment_prompt(seg.segment_id, seg.section_path, seg.markdown)},
@@ -80,4 +106,13 @@ def interpret_workspace(
         stage_name="interpret",
         output_key="interpretation",
     )
+    if on_progress:
+        on_progress(
+            "interpret",
+            {
+                "message": "解读完成，正在写入结果",
+                "current": total_segments,
+                "total": max(total_segments, 1),
+            },
+        )
     return result

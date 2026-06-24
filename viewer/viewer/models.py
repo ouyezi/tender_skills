@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -56,3 +57,48 @@ class SectionResponse(BaseModel):
     char_start: int
     char_end: int
     markdown: str
+
+
+class InterpretSessionRecord(BaseModel):
+    id: str
+    title: str
+    workspace_path: str
+    source_files: list[str]
+    status: Literal["pending", "running", "success", "failed"]
+    created_at: str
+    opened_at: str
+    error: str | None = None
+
+
+class InterpretJobState(BaseModel):
+    job_id: str
+    session_id: str
+    stage: Literal[
+        "pipeline_1",
+        "pipeline_2",
+        "merge",
+        "interpret",
+        "template",
+        "done",
+        "failed",
+    ]
+    message: str
+    status: Literal["running", "done", "failed"]
+    error: str | None = None
+    progress_percent: int = Field(default=0, ge=0, le=100)
+    step_current: int = Field(default=0, ge=0)
+    step_total: int = Field(default=0, ge=0)
+    detail: str = ""
+    dual_file: bool = False
+    updated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+
+
+class InterpretUploadResponse(BaseModel):
+    session_id: str
+    job_id: str
+
+
+class InterpretResultResponse(BaseModel):
+    interpretation: dict
+    templates: dict
+    source_files: list[str]

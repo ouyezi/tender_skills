@@ -39,9 +39,20 @@ python -m viewer
 
 ```text
 ~/.doc-chunk-viewer/
-├── sessions.json              # 最近 20 条会话索引
-├── uploads/<session_id>/        # 上传的原始文件
+├── sessions.json              # 最近 20 条切片会话索引
+├── interpret_sessions.json    # 最近 20 条解读会话索引
+├── uploads/<session_id>/        # 切片上传的原始文件
+├── uploads/interpret/<session_id>/  # 解读上传的原始文件
 └── workspaces/<session_id>/   # pipeline 产出（与 CLI 工作区结构相同）
+```
+
+### 招标解读（LLM）
+
+解读页需要配置 LLM（与 `tender_insights` 一致）：
+
+```bash
+export LLM_API_KEY=sk-...
+# 可选：LLM_PROVIDER, LLM_MODEL, LLM_BASE_URL
 ```
 
 ---
@@ -57,8 +68,9 @@ python -m viewer
 | 章节 Markdown | 右侧按 outline 字符锚点从 `content.md` 截取并渲染 |
 | 图片代理 | 工作区 `images/` 等资源通过 API 加载，不直接暴露文件路径 |
 | Pipeline 进度 | 上传后轮询 job 状态，显示 extract / outline / tree / chunk 阶段 |
+| **招标解读** | `/interpret` 页：上传 1～2 个招标文件 → 合并工作区 → 解读 + 模版提取 → 分类 Tab 展示 |
 
-**不在 v1 范围**：chunk / document_tree 视图、LLM refine / enrich UI、在线编辑、导出、远程部署。
+**不在 v1 范围**：chunk / document_tree 视图、LLM refine / enrich UI、在线编辑、导出、远程部署、法务审核 UI。
 
 ---
 
@@ -84,6 +96,14 @@ python -m viewer
 
 顶栏会话下拉列表显示最近处理记录；切换后重新加载 outline，并尽量保持上次选中的节点。
 
+### 4. 招标解读
+
+1. 打开 `http://127.0.0.1:8765/interpret`
+2. 选择文件 1（必填），可选补充文件 2
+3. 点击「开始解读」，等待进度完成
+4. 在 Tab 中查看废标项、得分项、风险、目录要求、模版
+5. 卡片可「查看原文」或跳转切片预览深链接
+
 ---
 
 ## REST API
@@ -102,6 +122,13 @@ python -m viewer
 | `GET` | `/api/sessions/{id}/sections/{node_id}` | 章节 Markdown 片段 |
 | `GET` | `/api/sessions/{id}/assets/{path}` | 代理工作区静态资源（如 `images/xxx.png`） |
 | `GET` | `/api/jobs/{job_id}` | pipeline 任务状态与进度 |
+| `GET` | `/interpret` | 招标解读页 |
+| `POST` | `/api/interpret/upload` | multipart：`file1`（必填）、`file2`（可选） |
+| `GET` | `/api/interpret/jobs/{job_id}` | 解读任务状态（含 `progress_percent`、`message`、`detail`、`step_current`/`step_total`） |
+| `GET` | `/api/interpret/sessions/{id}/job` | 按会话查最近一次 job（页面刷新后续看进度用） |
+| `GET` | `/api/interpret/sessions` | 解读会话列表 |
+| `GET` | `/api/interpret/sessions/{id}/result` | 解读 + 模版 JSON |
+| `GET` | `/api/interpret/sessions/{id}/sections/{node_id}` | 章节 Markdown |
 
 错误响应格式：`{ "detail": "..." }`（400 参数/格式错误，404 资源不存在）。
 
@@ -131,5 +158,6 @@ python -m pytest viewer/tests/api -v
 | 文档 | 路径 |
 |------|------|
 | Viewer 设计规格 | [`docs/superpowers/specs/2026-06-16-doc-chunk-viewer-design.md`](../docs/superpowers/specs/2026-06-16-doc-chunk-viewer-design.md) |
+| 招标解读页设计 | [`docs/superpowers/specs/2026-06-24-interpret-viewer-design.md`](../docs/superpowers/specs/2026-06-24-interpret-viewer-design.md) |
 | 实现计划 | [`docs/superpowers/plans/2026-06-16-doc-chunk-viewer.md`](../docs/superpowers/plans/2026-06-16-doc-chunk-viewer.md) |
 | doc_chunk CLI / API | [`README.md`](../README.md) |

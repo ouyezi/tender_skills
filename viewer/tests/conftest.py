@@ -29,6 +29,78 @@ def viewer_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
+def interpret_client(viewer_data_dir, monkeypatch):
+    import json
+
+    from doc_chunk.llm.client import FakeLLMClient
+    from fastapi.testclient import TestClient
+
+    from viewer.deps import get_interpret_pipeline_service, get_settings
+    from viewer.main import create_app
+    from viewer.services.interpret_job_registry import InterpretJobRegistry
+    from viewer.services.interpret_pipeline import InterpretPipelineService
+    from viewer.services.interpret_session_store import InterpretSessionStore
+    from viewer.services.session_store import SessionStore
+
+    get_settings.cache_clear()
+    get_interpret_pipeline_service.cache_clear()
+
+    settings = get_settings()
+    sessions = InterpretSessionStore(settings.interpret_sessions_file)
+    jobs = InterpretJobRegistry()
+
+    fake = FakeLLMClient(
+        default_response=json.dumps(
+            {
+                "disqualification_items": [
+                    {
+                        "id": "dq-001",
+                        "title": "测试废标",
+                        "summary": "摘要",
+                        "trigger_condition": "条件",
+                        "source_excerpt": "原文",
+                        "section_path": ["第一章"],
+                        "confidence": 0.9,
+                    }
+                ],
+                "scoring_items": [],
+                "bid_risk_items": [],
+                "directory_requirements": [],
+            }
+        )
+    )
+
+    def factory():
+        return InterpretPipelineService(
+            sessions=sessions,
+            jobs=jobs,
+            viewer_sessions=SessionStore(settings.sessions_file),
+            llm_client_factory=lambda: fake,
+        )
+
+    def get_jobs():
+        return jobs
+
+    def get_sessions():
+        return sessions
+
+    monkeypatch.setattr("viewer.deps.get_interpret_pipeline_service", factory)
+    monkeypatch.setattr("viewer.routes.interpret.get_interpret_pipeline_service", factory)
+    monkeypatch.setattr("viewer.deps.get_interpret_job_registry", get_jobs)
+    monkeypatch.setattr("viewer.routes.interpret.get_interpret_job_registry", get_jobs)
+    monkeypatch.setattr("viewer.deps.get_interpret_session_store", get_sessions)
+    monkeypatch.setattr("viewer.routes.interpret.get_interpret_session_store", get_sessions)
+    return TestClient(create_app())
+
+
+@pytest.fixture
+def second_sample_docx(sample_docx: Path, tmp_path: Path) -> Path:
+    dest = tmp_path / "supplement.docx"
+    dest.write_bytes(sample_docx.read_bytes())
+    return dest
+
+
+@pytest.fixture
 def pipeline_workspace(sample_docx: Path, tmp_path: Path) -> Path:
     from doc_chunk.api import run_pipeline
 

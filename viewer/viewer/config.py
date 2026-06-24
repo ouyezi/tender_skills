@@ -20,6 +20,14 @@ class ViewerSettings:
     def sessions_file(self) -> Path:
         return self.data_dir / "sessions.json"
 
+    @property
+    def interpret_sessions_file(self) -> Path:
+        return self.data_dir / "interpret_sessions.json"
+
+    @property
+    def interpret_uploads_dir(self) -> Path:
+        return self.data_dir / "uploads" / "interpret"
+
     @classmethod
     def load(cls) -> ViewerSettings:
         data_dir = Path.home() / ".doc-chunk-viewer"

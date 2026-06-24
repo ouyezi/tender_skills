@@ -252,4 +252,23 @@ document.getElementById("session-select").addEventListener("change", async (even
   }
 });
 
-refreshSessions().catch(console.error);
+async function bootstrapFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = params.get("session");
+  const nodeId = params.get("node");
+  await refreshSessions();
+  if (sessionId) {
+    state.sessionId = sessionId;
+    const select = document.getElementById("session-select");
+    if (select) {
+      select.value = sessionId;
+    }
+    await loadOutline();
+    if (nodeId) {
+      state.selectedNodeId = nodeId;
+      await selectNode(nodeId);
+    }
+  }
+}
+
+bootstrapFromUrl().catch(console.error);
