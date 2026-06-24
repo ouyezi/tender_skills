@@ -60,8 +60,14 @@ function renderProgress(job, dualFile) {
   document.getElementById("interpret-progress-percent").textContent = `${percent}%`;
   document.getElementById("interpret-progress-fill").style.width = `${percent}%`;
   const detail = job?.detail || "";
-  const stepText = job?.step_total ? `（${job.step_current}/${job.step_total}）` : "";
-  document.getElementById("interpret-progress-detail").textContent = `${detail}${stepText ? ` ${stepText}` : ""}`.trim();
+  const detailEl = document.getElementById("interpret-progress-detail");
+  if (stage === "interpret") {
+    const segmentProgress = job?.message || "";
+    detailEl.textContent = [segmentProgress, detail].filter(Boolean).join(" · ").trim();
+  } else {
+    const stepText = job?.step_total ? `（${job.step_current}/${job.step_total}）` : "";
+    detailEl.textContent = `${detail}${stepText ? ` ${stepText}` : ""}`.trim();
+  }
 }
 
 function hideProgress() {
@@ -114,7 +120,10 @@ async function pollJob(jobId, dualFile) {
           state.pollTimer = null;
           hideProgress();
           const msg = job.error || job.message || "解读失败";
-          setError(msg.includes("LLM") || msg.includes("API") ? `请配置 LLM_API_KEY：${msg}` : msg);
+          const needsApiKey =
+            /LLM_API_KEY|OPENAI_API_KEY|required for LLM|LLMUnavailable/i.test(msg) &&
+            !/validation error|JSON extraction failed/i.test(msg);
+          setError(needsApiKey ? `请配置 LLM_API_KEY：${msg}` : msg);
           reject(new Error(msg));
         }
       } catch (err) {
