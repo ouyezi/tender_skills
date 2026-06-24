@@ -55,6 +55,19 @@ export LLM_API_KEY=sk-...
 # 可选：LLM_PROVIDER, LLM_MODEL, LLM_BASE_URL
 ```
 
+### Interpret prompt logging
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INTERPRET_LOG_PROMPTS` | `1` | Log full LLM messages to stderr (`0` to disable) |
+| `INTERPRET_LOG_PROMPTS_DIR` | (unset) | If set, also write `{segment_id}.json` per call |
+
+Example:
+
+```bash
+INTERPRET_LOG_PROMPTS=1 INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts python -m viewer
+```
+
 ---
 
 ## 功能概览

@@ -77,6 +77,33 @@ export SEGMENT_MIN_TOKENS=2000
 export SEGMENT_MAX_TOKENS=12000
 ```
 
+## 评分专段（`seg-scoring-*`）
+
+除常规 `seg-001`… 全文分段外，`plan_segments` 会为文档内评分表 sidecar 追加最多 **5** 条专用分段，ID 形如 `seg-scoring-001`。用于混排章节中评分表未被常规段覆盖、或短评分节需独立 LLM 调用时。
+
+- 短评分节（`<200` 字符且路径含「评分/评审办法」等关键词）：在段内 markdown 注入相邻评分表 `llm_text`（B+A）
+- 全局扫描评分表 sidecar：去重后追加 `seg-scoring-*` 专段（C），prompt 附录要求只提取 `scoring_items`、`directory_requirements` 返回 `[]`
+- extractor 对 `seg-scoring-*` 的日志 `call_type` 为 `scoring_table`
+
+## LLM 提示词日志
+
+解读 pipeline 会将每次 segment / overview LLM 调用的完整 messages 写入 stderr（logger `tender_insights.interpret.llm`）。
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `INTERPRET_LOG_PROMPTS` | `1` | `0` / `false` 关闭日志 |
+| `INTERPRET_LOG_PROMPTS_DIR` | 未设置 | 若设置，额外将每次调用写入 `{segment_id}.json` |
+
+Viewer 启动时已配置 `logging.basicConfig(level=INFO)`，本机调试可直接在终端看到 `interpret_llm_prompt` 行。
+
+## Viewer 展示
+
+[`viewer`](/viewer) 解读页（`/interpret`）渲染 schema 1.2 完整结构：
+
+- **得分项 Tab**：`scoring_items[].children[]` 以嵌套列表展示细则（`title`、`score_range`、`criteria`、原文摘录）
+- **目录 Tab**：`directory_requirements[].structure` 树形展示；`inferred: true` 显示「推断目录」徽章
+- **概要面板**：`overview` 五段摘要（总览、废标、得分、风险、目录）
+
 ## 字段说明（`interpretation.json`）
 
 顶层：
