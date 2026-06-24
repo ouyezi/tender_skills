@@ -66,6 +66,8 @@ class InterpretPipelineService:
         detail: str = "",
         dual_file: bool,
         status: str = "running",
+        segment_current: int = 0,
+        segment_total: int = 0,
     ) -> None:
         percent = int(step_current * 100 / step_total) if step_total else 0
         self._jobs.update(
@@ -76,6 +78,8 @@ class InterpretPipelineService:
             progress_percent=min(percent, 100),
             step_current=step_current,
             step_total=step_total,
+            segment_current=segment_current,
+            segment_total=segment_total,
             detail=detail,
             dual_file=dual_file,
         )
@@ -178,14 +182,17 @@ class InterpretPipelineService:
             client = self._llm_client_factory()
 
             def _interpret_progress(_stage: str, payload: dict) -> None:
-                current = int(payload.get("current", 0))
-                step_current = interpret_base + current
+                seg_current = int(payload.get("current", 0))
+                seg_total = int(payload.get("total", 1))
+                step_current = interpret_base + seg_current
                 self._report(
                     job_id,
                     stage="interpret",
-                    message=str(payload.get("message", "解读招标")),
+                    message="解读招标",
                     step_current=min(step_current, step_total - 1),
                     step_total=step_total,
+                    segment_current=seg_current,
+                    segment_total=seg_total,
                     detail=str(payload.get("detail", "")),
                     dual_file=dual_file,
                 )

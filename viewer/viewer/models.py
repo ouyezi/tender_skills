@@ -88,6 +88,8 @@ class InterpretJobState(BaseModel):
     progress_percent: int = Field(default=0, ge=0, le=100)
     step_current: int = Field(default=0, ge=0)
     step_total: int = Field(default=0, ge=0)
+    segment_current: int = Field(default=0, ge=0)
+    segment_total: int = Field(default=0, ge=0)
     detail: str = ""
     dual_file: bool = False
     updated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
