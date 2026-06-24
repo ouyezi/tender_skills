@@ -7,6 +7,7 @@ from doc_chunk.llm.client import LLMClient
 from pydantic import BaseModel
 
 from tender_insights.common.llm_extractor import extract_json_model
+from tender_insights.interpret.llm_logging import log_llm_prompt
 from tender_insights.interpret.models import (
     BidRiskItem,
     DirectoryRequirement,
@@ -60,5 +61,10 @@ def build_overview(
         {"role": "system", "content": OVERVIEW_SYSTEM_PROMPT},
         {"role": "user", "content": build_overview_prompt(json.dumps(payload, ensure_ascii=False))},
     ]
+    log_llm_prompt(
+        call_type="overview",
+        messages=messages,
+        workspace=None,
+    )
     resp = extract_json_model(client, messages, OverviewLLMResponse, max_retries=max_retries)
     return InterpretationOverview(**resp.model_dump())

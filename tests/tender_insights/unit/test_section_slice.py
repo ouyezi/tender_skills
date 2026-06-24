@@ -1,4 +1,5 @@
 import json
+import logging
 
 from doc_chunk.api import extract_file, extract_outline
 from doc_chunk.llm.client import FakeLLMClient
@@ -82,3 +83,39 @@ def test_interpret_workspace_uses_llm_table_text(personnel_dual_row_docx, tmp_pa
     assert any("【表格:人员信息】" in text and "姓名: 刘敏" in text for text in user_contents)
     assert isinstance(result.overview, InterpretationOverview)
     assert result.schema_version == "1.2"
+
+
+def test_interpret_workspace_logs_segment_prompts(personnel_dual_row_docx, tmp_path, monkeypatch, caplog) -> None:
+    monkeypatch.setenv("OCR_ENABLED", "false")
+    monkeypatch.delenv("INTERPRET_LOG_PROMPTS", raising=False)
+
+    ws_path = tmp_path / "ws"
+    extract_file(personnel_dual_row_docx, ws_path, overwrite=True)
+    extract_outline(ws_path)
+    workspace = OutputWorkspace.open_existing(ws_path)
+    outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
+    workspace.outline_path.write_text(outline.model_dump_json(), encoding="utf-8")
+
+    segment_json = json.dumps(
+        {
+            "disqualification_items": [],
+            "scoring_items": [],
+            "bid_risk_items": [],
+            "directory_requirements": [],
+        }
+    )
+    overview_json = json.dumps(
+        {
+            "summary": "概要",
+            "disqualification_summary": "废标",
+            "scoring_summary": "得分",
+            "bid_risk_summary": "风险",
+            "directory_summary": "目录",
+        }
+    )
+    client = FakeLLMClient(responses=[segment_json, overview_json])
+
+    with caplog.at_level(logging.INFO, logger="tender_insights.interpret.llm"):
+        interpret_workspace(workspace, client)
+
+    assert any("interpret_llm_prompt" in r.message for r in caplog.records)
