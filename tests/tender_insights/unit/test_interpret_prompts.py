@@ -15,3 +15,22 @@ def test_build_segment_prompt_includes_appendix() -> None:
     prompt = build_segment_prompt("seg-001", ["第二章 响应人须知"], "正文内容")
     assert "正文内容" in prompt
     assert "scoring_items" in prompt
+
+
+def test_build_segment_prompt_mixed_format_and_scoring_table() -> None:
+    md = "【表格: 评标表】\n评分说明 | 分值\n商品方案 | 0-2分\n\n一、投标函\n"
+    prompt = build_segment_prompt(
+        "seg-024",
+        ["第六章 响应文件格式"],
+        md,
+    )
+    assert "directory_requirements" in prompt
+    assert "scoring_items" in prompt
+    assert "禁止只提取目录" in prompt
+
+
+def test_build_segment_prompt_scoring_table_segment() -> None:
+    md = "【表格: 评标表】\n评分说明 | 分值\n商品方案 | 0-2分"
+    prompt = build_segment_prompt("seg-scoring-001", ["第三章 评审办法"], md)
+    assert "directory_requirements 返回 []" in prompt
+    assert "完整提取全部 scoring_items" in prompt

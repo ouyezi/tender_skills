@@ -35,6 +35,31 @@ _SEGMENT_APPENDIX_RULES: list[tuple[tuple[str, ...], str]] = [
     ),
 ]
 
+_MIXED_FORMAT_SCORING_APPENDIX = (
+    "【分段提示】本段同时含投标文件格式与评分表，须同时提取 directory_requirements（structure 树）"
+    "与 scoring_items（含 children 细则），禁止只提取目录而忽略评分表。"
+)
+_SCORING_TABLE_ONLY_APPENDIX = (
+    "【分段提示】本段仅含评分表，须完整提取全部 scoring_items + children；directory_requirements 返回 []。"
+)
+
+_FORMAT_PATH_KEYWORDS = ("格式", "响应文件", "投标文件组成")
+_TABLE_MARKER = "【表格:"
+_SCORING_TABLE_COLUMN_HINTS = ("评分说明", "分值", "得分")
+
+
+def _is_mixed_format_scoring_section(section_path: list[str], markdown: str) -> bool:
+    path = " ".join(section_path)
+    if not any(kw in path for kw in _FORMAT_PATH_KEYWORDS):
+        return False
+    if _TABLE_MARKER not in markdown:
+        return False
+    return any(hint in markdown for hint in _SCORING_TABLE_COLUMN_HINTS)
+
+
+def _is_scoring_table_segment(segment_id: str) -> bool:
+    return segment_id.startswith("seg-scoring-")
+
 
 def build_segment_appendix(section_path: list[str]) -> str:
     haystack = " ".join(section_path).lower()
@@ -47,7 +72,15 @@ def build_segment_appendix(section_path: list[str]) -> str:
 
 def build_segment_prompt(segment_id: str, section_path: list[str], markdown: str) -> str:
     path = " > ".join(section_path) if section_path else "(root)"
-    appendix = build_segment_appendix(section_path)
+    appendix_parts: list[str] = []
+    base_appendix = build_segment_appendix(section_path)
+    if base_appendix:
+        appendix_parts.append(base_appendix)
+    if _is_scoring_table_segment(segment_id):
+        appendix_parts.append(_SCORING_TABLE_ONLY_APPENDIX)
+    elif _is_mixed_format_scoring_section(section_path, markdown):
+        appendix_parts.append(_MIXED_FORMAT_SCORING_APPENDIX)
+    appendix = "\n".join(appendix_parts)
     parts = [f"segment_id: {segment_id}", f"section_path: {path}"]
     if appendix:
         parts.append(appendix)
