@@ -26,7 +26,15 @@
         <option value="">— 无会话 —</option>
       </select>
     </div>
-    <div id="interpret-progress" class="progress-steps" hidden></div>
+    <div id="interpret-progress" class="progress-panel" hidden>
+      <div class="progress-meta">
+        <span id="interpret-progress-label">准备中…</span>
+        <span id="interpret-progress-percent">0%</span>
+      </div>
+      <div class="progress-track"><div id="interpret-progress-fill" class="progress-fill"></div></div>
+      <div id="interpret-progress-detail" class="progress-detail"></div>
+      <div id="interpret-progress-steps" class="progress-steps"></div>
+    </div>
     <div id="interpret-error" class="progress-bar" hidden></div>
   </header>
 

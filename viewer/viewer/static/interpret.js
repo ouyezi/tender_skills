@@ -39,11 +39,14 @@ function setError(message, hidden = false) {
   }
 }
 
-function renderProgress(stage, dualFile) {
-  const el = document.getElementById("interpret-progress");
-  el.hidden = false;
-  const visible = dualFile ? STAGES : STAGES.filter((s) => s !== "pipeline_2" && s !== "merge");
-  el.innerHTML = visible
+function renderProgress(job, dualFile) {
+  const panel = document.getElementById("interpret-progress");
+  panel.hidden = false;
+  const useDual = job?.dual_file ?? dualFile;
+  const visible = useDual ? STAGES : STAGES.filter((s) => s !== "pipeline_2" && s !== "merge");
+  const stage = job?.stage || "pipeline_1";
+  const stepsEl = document.getElementById("interpret-progress-steps");
+  stepsEl.innerHTML = visible
     .map((s) => {
       const active = s === stage;
       const done = visible.indexOf(s) < visible.indexOf(stage);
@@ -51,6 +54,18 @@ function renderProgress(stage, dualFile) {
       return `<span class="${cls}">${STAGE_LABELS[s]}</span>`;
     })
     .join("");
+
+  const percent = job?.progress_percent ?? 0;
+  document.getElementById("interpret-progress-label").textContent = job?.message || STAGE_LABELS[stage] || "处理中…";
+  document.getElementById("interpret-progress-percent").textContent = `${percent}%`;
+  document.getElementById("interpret-progress-fill").style.width = `${percent}%`;
+  const detail = job?.detail || "";
+  const stepText = job?.step_total ? `（${job.step_current}/${job.step_total}）` : "";
+  document.getElementById("interpret-progress-detail").textContent = `${detail}${stepText ? ` ${stepText}` : ""}`.trim();
+}
+
+function hideProgress() {
+  document.getElementById("interpret-progress").hidden = true;
 }
 
 async function refreshSessions() {
@@ -68,6 +83,8 @@ async function refreshSessions() {
     select.value = state.sessionId;
     if (sessions[0].status === "success") {
       await loadResult(state.sessionId);
+    } else if (sessions[0].status === "running") {
+      await resumeRunningSession(state.sessionId);
     }
   }
 }
@@ -77,24 +94,25 @@ async function pollJob(jobId, dualFile) {
     clearInterval(state.pollTimer);
   }
   return new Promise((resolve, reject) => {
-    state.pollTimer = setInterval(async () => {
+    const tick = async () => {
       try {
         const job = await api(`/api/interpret/jobs/${jobId}`);
-        if (job.stage !== "failed" && job.stage !== "done") {
-          renderProgress(job.stage, dualFile);
+        if (job.status === "running") {
+          renderProgress(job, dualFile);
         }
         if (job.status === "done") {
           clearInterval(state.pollTimer);
           state.pollTimer = null;
-          document.getElementById("interpret-progress").hidden = true;
+          renderProgress(job, dualFile);
           setError("", true);
           await refreshSessions();
           await loadResult(job.session_id);
+          setTimeout(hideProgress, 1500);
           resolve(job);
         } else if (job.status === "failed") {
           clearInterval(state.pollTimer);
           state.pollTimer = null;
-          document.getElementById("interpret-progress").hidden = true;
+          hideProgress();
           const msg = job.error || job.message || "解读失败";
           setError(msg.includes("LLM") || msg.includes("API") ? `请配置 LLM_API_KEY：${msg}` : msg);
           reject(new Error(msg));
@@ -104,8 +122,22 @@ async function pollJob(jobId, dualFile) {
         state.pollTimer = null;
         reject(err);
       }
-    }, 1000);
+    };
+    tick();
+    state.pollTimer = setInterval(tick, 1000);
   });
+}
+
+async function resumeRunningSession(sessionId) {
+  try {
+    const job = await api(`/api/interpret/sessions/${sessionId}/job`);
+    if (job.status === "running") {
+      state.sessionId = sessionId;
+      await pollJob(job.job_id, job.dual_file);
+    }
+  } catch {
+    // no active job for this session
+  }
 }
 
 function renderTabs() {
@@ -296,7 +328,7 @@ document.getElementById("start-btn").addEventListener("click", async () => {
       form.append("file2", file2);
     }
     const dualFile = Boolean(file2);
-    renderProgress("pipeline_1", dualFile);
+    renderProgress({ stage: "pipeline_1", message: "上传完成，开始处理…", progress_percent: 0 }, dualFile);
     const result = await api("/api/interpret/upload", { method: "POST", body: form });
     state.sessionId = result.session_id;
     await refreshSessions();
@@ -325,6 +357,9 @@ document.getElementById("interpret-session-select").addEventListener("change", a
   const session = await api(`/api/interpret/sessions/${sessionId}`);
   if (session.status === "success") {
     await loadResult(sessionId);
+  } else if (session.status === "running") {
+    document.getElementById("result-panel").hidden = true;
+    await resumeRunningSession(sessionId);
   } else {
     document.getElementById("result-panel").hidden = true;
   }

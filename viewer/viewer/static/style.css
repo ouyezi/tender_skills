@@ -276,11 +276,52 @@ button:hover {
   align-items: center;
 }
 
+.progress-panel {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+}
+
+.progress-panel[hidden] {
+  display: none;
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.progress-track {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+  transition: width 0.3s ease;
+}
+
+.progress-detail {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #475569;
+  min-height: 1.2em;
+}
+
 .progress-steps {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .progress-steps .step {

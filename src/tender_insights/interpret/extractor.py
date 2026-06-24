@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from doc_chunk.llm.client import LLMClient
@@ -54,6 +55,7 @@ def interpret_workspace(
     client: LLMClient,
     *,
     config: InsightsConfig | None = None,
+    on_progress: Callable[[str, dict], None] | None = None,
 ) -> InterpretationFile:
     config = config or InsightsConfig.from_env()
     outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
@@ -68,8 +70,30 @@ def interpret_workspace(
             target_node_ids.add(node.node_id)
 
     aggregated = InterpretationLLMResponse()
-    for node_id in sorted(target_node_ids):
+    sorted_ids = sorted(target_node_ids)
+    total_nodes = len(sorted_ids)
+    if on_progress:
+        on_progress(
+            "interpret",
+            {
+                "message": f"开始解读，共 {total_nodes} 个章节待分析",
+                "current": 0,
+                "total": max(total_nodes, 1),
+            },
+        )
+    for index, node_id in enumerate(sorted_ids, start=1):
         node = next(n for n in outline.nodes if n.node_id == node_id)
+        if on_progress:
+            on_progress(
+                "interpret",
+                {
+                    "message": f"解读章节 ({index}/{total_nodes})",
+                    "detail": node.title,
+                    "current": index,
+                    "total": max(total_nodes, 1),
+                    "node_id": node_id,
+                },
+            )
         md = _slice_node_markdown(workspace, content_md, outline, node_id, blocks=blocks)
         path = _section_path(node_id, outline)
         messages = [
@@ -105,4 +129,13 @@ def interpret_workspace(
         stage_name="interpret",
         output_key="interpretation",
     )
+    if on_progress:
+        on_progress(
+            "interpret",
+            {
+                "message": "解读完成，正在写入结果",
+                "current": total_nodes,
+                "total": max(total_nodes, 1),
+            },
+        )
     return result

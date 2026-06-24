@@ -88,7 +88,7 @@ async def upload_interpret(
         error=None,
     )
     get_interpret_session_store().add(record)
-    get_interpret_job_registry().create(job_id, session_id)
+    get_interpret_job_registry().create(job_id, session_id, dual_file=len(input_paths) > 1)
 
     service = get_interpret_pipeline_service()
     background_tasks.add_task(
@@ -104,6 +104,17 @@ async def upload_interpret(
 @router.get("/jobs/{job_id}")
 def get_interpret_job(job_id: str) -> dict:
     job = get_interpret_job_registry().get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job.model_dump()
+
+
+@router.get("/sessions/{session_id}/job")
+def get_interpret_session_job(session_id: str) -> dict:
+    session = get_interpret_session_store().get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    job = get_interpret_job_registry().get_latest_for_session(session_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return job.model_dump()

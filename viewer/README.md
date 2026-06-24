@@ -124,7 +124,8 @@ export LLM_API_KEY=sk-...
 | `GET` | `/api/jobs/{job_id}` | pipeline 任务状态与进度 |
 | `GET` | `/interpret` | 招标解读页 |
 | `POST` | `/api/interpret/upload` | multipart：`file1`（必填）、`file2`（可选） |
-| `GET` | `/api/interpret/jobs/{job_id}` | 解读任务状态 |
+| `GET` | `/api/interpret/jobs/{job_id}` | 解读任务状态（含 `progress_percent`、`message`、`detail`、`step_current`/`step_total`） |
+| `GET` | `/api/interpret/sessions/{id}/job` | 按会话查最近一次 job（页面刷新后续看进度用） |
 | `GET` | `/api/interpret/sessions` | 解读会话列表 |
 | `GET` | `/api/interpret/sessions/{id}/result` | 解读 + 模版 JSON |
 | `GET` | `/api/interpret/sessions/{id}/sections/{node_id}` | 章节 Markdown |

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from doc_chunk.llm.client import LLMClient
@@ -16,9 +17,14 @@ def resolve_workspace_path(path: Path, *, output_dir: Path | None = None, overwr
     return resolve_workspace(path, output_dir=output_dir, overwrite=overwrite)
 
 
-def interpret_document(workspace: OutputWorkspace, *, client: LLMClient | None = None):
+def interpret_document(
+    workspace: OutputWorkspace,
+    *,
+    client: LLMClient | None = None,
+    on_progress: Callable[[str, dict], None] | None = None,
+):
     client = client or create_llm_client_from_env()
-    return interpret_workspace(workspace, client)
+    return interpret_workspace(workspace, client, on_progress=on_progress)
 
 
 def extract_templates(workspace: OutputWorkspace, *, client: LLMClient | None = None):

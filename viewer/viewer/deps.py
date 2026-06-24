@@ -48,4 +48,5 @@ def get_interpret_pipeline_service() -> InterpretPipelineService:
     return InterpretPipelineService(
         sessions=get_interpret_session_store(),
         jobs=get_interpret_job_registry(),
+        viewer_sessions=get_session_store(),
     )
