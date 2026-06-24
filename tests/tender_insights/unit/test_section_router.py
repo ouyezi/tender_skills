@@ -1,6 +1,6 @@
 from doc_chunk.models.outline import OutlineNode, OutlineTree
 
-from tender_insights.common.section_router import SectionRouter, load_routing_rules
+from tender_insights.common.section_router import SectionRouter
 
 
 def test_route_nodes_by_keyword() -> None:

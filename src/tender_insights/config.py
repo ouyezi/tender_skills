@@ -4,11 +4,31 @@ from dataclasses import dataclass
 import os
 
 
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(key: str, default: int) -> int:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return int(raw)
+
+
 @dataclass(frozen=True, slots=True)
 class InsightsConfig:
     llm_model: str = "qwen-plus"
     max_retries: int = 2
-    chunks_per_batch: int = 3
+    ocr_enabled: bool = True
+    ocr_model: str = "qwen-vl-ocr"
+    segment_min_tokens: int = 2000
+    segment_max_tokens: int = 12000
+    ocr_logo_max_bytes: int = 10240
+    ocr_logo_max_px: int = 128
+    ocr_max_long_edge: int = 1500
 
     @classmethod
     def from_env(cls) -> InsightsConfig:
@@ -20,4 +40,11 @@ class InsightsConfig:
                 or os.environ.get("DOC_CHUNK_LLM_MODEL")
                 or default_model
             ),
+            ocr_enabled=_env_bool("OCR_ENABLED", True),
+            ocr_model=os.environ.get("OCR_MODEL") or "qwen-vl-ocr",
+            segment_min_tokens=_env_int("SEGMENT_MIN_TOKENS", 2000),
+            segment_max_tokens=_env_int("SEGMENT_MAX_TOKENS", 12000),
+            ocr_logo_max_bytes=_env_int("OCR_LOGO_MAX_BYTES", 10240),
+            ocr_logo_max_px=_env_int("OCR_LOGO_MAX_PX", 128),
+            ocr_max_long_edge=_env_int("OCR_MAX_LONG_EDGE", 1500),
         )

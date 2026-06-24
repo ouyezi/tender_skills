@@ -1,3 +1,5 @@
+import json
+
 from doc_chunk.api import extract_file, extract_outline
 from doc_chunk.llm.client import FakeLLMClient
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
@@ -5,6 +7,7 @@ from doc_chunk.workspace.layout import OutputWorkspace
 
 from tender_insights.common.section_slice import load_content_blocks, slice_for_llm
 from tender_insights.interpret.extractor import interpret_workspace
+from tender_insights.interpret.models import InterpretationOverview
 
 
 def test_slice_for_llm_replaces_table_in_node_range(personnel_dual_row_docx, tmp_path) -> None:
@@ -25,7 +28,9 @@ def test_slice_for_llm_replaces_table_in_node_range(personnel_dual_row_docx, tmp
     assert "| 姓名 | 姓名 |" not in sliced
 
 
-def test_interpret_workspace_uses_llm_table_text(personnel_dual_row_docx, tmp_path) -> None:
+def test_interpret_workspace_uses_llm_table_text(personnel_dual_row_docx, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OCR_ENABLED", "false")
+
     ws_path = tmp_path / "ws"
     extract_file(personnel_dual_row_docx, ws_path, overwrite=True)
     extract_outline(ws_path)
@@ -46,12 +51,26 @@ def test_interpret_workspace_uses_llm_table_text(personnel_dual_row_docx, tmp_pa
     )
     workspace.outline_path.write_text(outline.model_dump_json(indent=2), encoding="utf-8")
 
-    client = FakeLLMClient(
-        default_response=(
-            '{"disqualification_items":[],"scoring_items":[],"bid_risk_items":[],"directory_requirements":[]}'
-        )
+    segment_json = json.dumps(
+        {
+            "disqualification_items": [],
+            "scoring_items": [],
+            "bid_risk_items": [],
+            "directory_requirements": [],
+        }
     )
-    interpret_workspace(workspace, client)
+    overview_json = json.dumps(
+        {
+            "summary": "概要",
+            "disqualification_summary": "废标",
+            "scoring_summary": "得分",
+            "bid_risk_summary": "风险",
+            "directory_summary": "目录",
+        }
+    )
+    client = FakeLLMClient(responses=[segment_json, overview_json])
+
+    result = interpret_workspace(workspace, client)
 
     assert client.calls
     user_contents = [
@@ -61,3 +80,5 @@ def test_interpret_workspace_uses_llm_table_text(personnel_dual_row_docx, tmp_pa
         if message.get("role") == "user"
     ]
     assert any("【表格:人员信息】" in text and "姓名: 刘敏" in text for text in user_contents)
+    assert isinstance(result.overview, InterpretationOverview)
+    assert result.schema_version == "1.1"

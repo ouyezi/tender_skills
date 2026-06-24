@@ -13,6 +13,14 @@ class Severity(str, Enum):
     low = "low"
 
 
+class DirectoryStructureNode(BaseModel):
+    order: int
+    number: str | None = None
+    title: str
+    mandatory: bool = True
+    children: list["DirectoryStructureNode"] = Field(default_factory=list)
+
+
 class DisqualificationItem(BaseModel):
     id: str
     title: str
@@ -57,11 +65,34 @@ class DirectoryRequirement(BaseModel):
     title: str
     required_sections: list[str]
     mandatory: bool
+    structure: list[DirectoryStructureNode] = Field(default_factory=list)
     source_excerpt: str
     section_path: list[str]
     char_start: int | None = None
     char_end: int | None = None
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class InterpretationOverview(BaseModel):
+    summary: str
+    disqualification_summary: str
+    scoring_summary: str
+    bid_risk_summary: str
+    directory_summary: str
+
+
+class DirectoryOutlineNode(BaseModel):
+    id: str
+    title: str
+    level: int
+    order: int
+    mandatory: bool = True
+    number: str | None = None
+
+
+class DirectoryOutline(BaseModel):
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    nodes: list[DirectoryOutlineNode] = Field(default_factory=list)
 
 
 class InterpretationLLMResponse(BaseModel):
@@ -72,6 +103,13 @@ class InterpretationLLMResponse(BaseModel):
 
 
 class InterpretationFile(InterpretationLLMResponse):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.1"
     source_workspace: str
     analyzed_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    overview: InterpretationOverview
+    directory_outline: DirectoryOutline = Field(default_factory=DirectoryOutline)
+    segment_count: int = 0
+    ocr_image_count: int = 0
+
+
+DirectoryStructureNode.model_rebuild()

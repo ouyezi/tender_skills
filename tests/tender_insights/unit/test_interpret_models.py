@@ -3,14 +3,26 @@ from tender_insights.interpret.models import (
     DirectoryRequirement,
     DisqualificationItem,
     InterpretationFile,
+    InterpretationOverview,
     ScoringItem,
     Severity,
 )
 
 
+def _overview() -> InterpretationOverview:
+    return InterpretationOverview(
+        summary="概要",
+        disqualification_summary="废标概要",
+        scoring_summary="得分概要",
+        bid_risk_summary="风险概要",
+        directory_summary="目录概要",
+    )
+
+
 def test_interpretation_file_roundtrip() -> None:
     payload = InterpretationFile(
         source_workspace="/tmp/ws",
+        overview=_overview(),
         disqualification_items=[
             DisqualificationItem(
                 id="dq-001",
@@ -62,3 +74,5 @@ def test_interpretation_file_roundtrip() -> None:
     restored = InterpretationFile.model_validate_json(payload.model_dump_json())
     assert restored.disqualification_items[0].id == "dq-001"
     assert restored.scoring_items[0].max_score == 30.0
+    assert restored.overview.summary == "概要"
+    assert restored.schema_version == "1.1"
