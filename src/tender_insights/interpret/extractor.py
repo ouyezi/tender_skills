@@ -13,7 +13,11 @@ from tender_insights.common.output_writer import write_json_artifact
 from tender_insights.common.segment_planner import plan_segments
 from tender_insights.config import InsightsConfig
 from tender_insights.interpret.directory_outline import build_directory_outline
-from tender_insights.interpret.merger import dedupe_by_title
+from tender_insights.interpret.merger import (
+    dedupe_by_title,
+    merge_scoring_items,
+    normalize_directory_requirements,
+)
 from tender_insights.interpret.models import InterpretationFile, InterpretationLLMResponse
 from tender_insights.interpret.overview import build_overview
 from tender_insights.interpret.prompts import SYSTEM_PROMPT, build_segment_prompt
@@ -75,9 +79,9 @@ def interpret_workspace(
         aggregated.directory_requirements.extend(batch.directory_requirements)
 
     dq = dedupe_by_title(aggregated.disqualification_items)
-    sc = dedupe_by_title(aggregated.scoring_items)
+    sc = merge_scoring_items(aggregated.scoring_items)
     br = dedupe_by_title(aggregated.bid_risk_items)
-    dr = dedupe_by_title(aggregated.directory_requirements)
+    dr = normalize_directory_requirements(aggregated.directory_requirements)
 
     anchor_md = source.markdown
     _apply_anchors(dq, anchor_md)

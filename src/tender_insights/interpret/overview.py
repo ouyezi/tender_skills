@@ -39,13 +39,21 @@ def build_overview(
             i.model_dump(include={"title", "summary", "trigger_condition"}) for i in dq
         ],
         "scoring_items": [
-            i.model_dump(include={"title", "summary", "max_score", "weight", "criteria"}) for i in sc
+            {
+                **i.model_dump(include={"title", "summary", "max_score", "weight", "criteria"}),
+                "children": [
+                    c.model_dump(include={"title", "max_score", "score_range", "criteria"})
+                    for c in i.children
+                ],
+            }
+            for i in sc
         ],
         "bid_risk_items": [
             i.model_dump(include={"title", "summary", "severity", "risk_category"}) for i in br
         ],
         "directory_requirements": [
-            i.model_dump(include={"title", "required_sections", "mandatory"}) for i in dr
+            i.model_dump(include={"title", "required_sections", "mandatory", "inferred"})
+            for i in dr
         ],
     }
     messages = [

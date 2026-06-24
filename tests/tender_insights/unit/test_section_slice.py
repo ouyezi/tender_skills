@@ -81,4 +81,4 @@ def test_interpret_workspace_uses_llm_table_text(personnel_dual_row_docx, tmp_pa
     ]
     assert any("【表格:人员信息】" in text and "姓名: 刘敏" in text for text in user_contents)
     assert isinstance(result.overview, InterpretationOverview)
-    assert result.schema_version == "1.1"
+    assert result.schema_version == "1.2"
