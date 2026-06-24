@@ -56,18 +56,23 @@ function renderProgress(job, dualFile) {
     .join("");
 
   const percent = job?.progress_percent ?? 0;
-  document.getElementById("interpret-progress-label").textContent = job?.message || STAGE_LABELS[stage] || "处理中…";
-  document.getElementById("interpret-progress-percent").textContent = `${percent}%`;
-  document.getElementById("interpret-progress-fill").style.width = `${percent}%`;
-  const detail = job?.detail || "";
   const detailEl = document.getElementById("interpret-progress-detail");
   if (stage === "interpret") {
-    const segmentProgress = job?.message || "";
-    detailEl.textContent = [segmentProgress, detail].filter(Boolean).join(" · ").trim();
+    const segTotal = job?.segment_total ?? 0;
+    const segCurrent = job?.segment_current ?? 0;
+    const segText = segTotal > 0 ? `解读分段 (${segCurrent}/${segTotal})` : job?.message || "解读招标";
+    const chapter = job?.detail || "";
+    document.getElementById("interpret-progress-label").textContent = segText;
+    detailEl.textContent = chapter;
   } else {
+    document.getElementById("interpret-progress-label").textContent =
+      job?.message || STAGE_LABELS[stage] || "处理中…";
+    const detail = job?.detail || "";
     const stepText = job?.step_total ? `（${job.step_current}/${job.step_total}）` : "";
     detailEl.textContent = `${detail}${stepText ? ` ${stepText}` : ""}`.trim();
   }
+  document.getElementById("interpret-progress-percent").textContent = `${percent}%`;
+  document.getElementById("interpret-progress-fill").style.width = `${percent}%`;
 }
 
 function hideProgress() {
