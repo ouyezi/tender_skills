@@ -4,6 +4,7 @@ from tender_insights.interpret.models import (
     DisqualificationItem,
     InterpretationFile,
     InterpretationOverview,
+    ScoringCriterionNode,
     ScoringItem,
     Severity,
 )
@@ -75,4 +76,50 @@ def test_interpretation_file_roundtrip() -> None:
     assert restored.disqualification_items[0].id == "dq-001"
     assert restored.scoring_items[0].max_score == 30.0
     assert restored.overview.summary == "概要"
-    assert restored.schema_version == "1.1"
+    assert restored.schema_version == "1.2"
+
+
+def test_scoring_item_with_children_roundtrip() -> None:
+    child = ScoringCriterionNode(
+        id="sc-001-01",
+        title="方案完整性",
+        max_score=10.0,
+        score_range="0-10",
+        criteria="方案覆盖全部要求得10分",
+        source_excerpt="原文",
+    )
+    payload = InterpretationFile(
+        source_workspace="/tmp/ws",
+        overview=_overview(),
+        scoring_items=[
+            ScoringItem(
+                id="sc-001",
+                title="技术部分",
+                summary="技术评分",
+                max_score=40.0,
+                weight="40%",
+                criteria="大类说明",
+                children=[child],
+                source_excerpt="技术40分",
+                section_path=["第二章 响应人须知"],
+                confidence=0.9,
+            )
+        ],
+    )
+    restored = InterpretationFile.model_validate_json(payload.model_dump_json())
+    assert restored.schema_version == "1.2"
+    assert len(restored.scoring_items[0].children) == 1
+    assert restored.scoring_items[0].children[0].score_range == "0-10"
+
+
+def test_directory_requirement_inferred_default_false() -> None:
+    dr = DirectoryRequirement(
+        id="dr-001",
+        title="组成",
+        required_sections=["投标函"],
+        mandatory=True,
+        source_excerpt="x",
+        section_path=[],
+        confidence=0.8,
+    )
+    assert dr.inferred is False

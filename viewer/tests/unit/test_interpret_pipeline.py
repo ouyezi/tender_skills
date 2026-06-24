@@ -33,16 +33,39 @@ async def test_single_file_interpret_pipeline(sample_docx: Path, tmp_path: Path)
     )
     jobs.create(job_id, session_id)
 
-    fake_llm = FakeLLMClient(
-        default_response=json.dumps(
-            {
-                "disqualification_items": [],
-                "scoring_items": [],
-                "bid_risk_items": [],
-                "directory_requirements": [],
-            }
-        )
+    segment_json = json.dumps(
+        {
+            "disqualification_items": [],
+            "scoring_items": [],
+            "bid_risk_items": [],
+            "directory_requirements": [],
+        }
     )
+    overview_json = json.dumps(
+        {
+            "summary": "概要",
+            "disqualification_summary": "废标",
+            "scoring_summary": "得分",
+            "bid_risk_summary": "风险",
+            "directory_summary": "目录",
+        }
+    )
+
+    class _InterpretFakeLLM(FakeLLMClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self._segment_json = segment_json
+            self._overview_json = overview_json
+
+        def complete(self, messages, *, response_format="text", timeout=60.0):
+            user_text = " ".join(
+                str(m.get("content", "")) for m in messages if m.get("role") == "user"
+            )
+            if "已提取明细" in user_text:
+                return self._overview_json
+            return self._segment_json
+
+    fake_llm = _InterpretFakeLLM()
     service = InterpretPipelineService(
         sessions=sessions,
         jobs=jobs,

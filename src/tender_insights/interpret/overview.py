@@ -7,6 +7,7 @@ from doc_chunk.llm.client import LLMClient
 from pydantic import BaseModel
 
 from tender_insights.common.llm_extractor import extract_json_model
+from tender_insights.interpret.llm_logging import log_llm_prompt
 from tender_insights.interpret.models import (
     BidRiskItem,
     DirectoryRequirement,
@@ -39,18 +40,31 @@ def build_overview(
             i.model_dump(include={"title", "summary", "trigger_condition"}) for i in dq
         ],
         "scoring_items": [
-            i.model_dump(include={"title", "summary", "max_score", "weight", "criteria"}) for i in sc
+            {
+                **i.model_dump(include={"title", "summary", "max_score", "weight", "criteria"}),
+                "children": [
+                    c.model_dump(include={"title", "max_score", "score_range", "criteria"})
+                    for c in i.children
+                ],
+            }
+            for i in sc
         ],
         "bid_risk_items": [
             i.model_dump(include={"title", "summary", "severity", "risk_category"}) for i in br
         ],
         "directory_requirements": [
-            i.model_dump(include={"title", "required_sections", "mandatory"}) for i in dr
+            i.model_dump(include={"title", "required_sections", "mandatory", "inferred"})
+            for i in dr
         ],
     }
     messages = [
         {"role": "system", "content": OVERVIEW_SYSTEM_PROMPT},
         {"role": "user", "content": build_overview_prompt(json.dumps(payload, ensure_ascii=False))},
     ]
+    log_llm_prompt(
+        call_type="overview",
+        messages=messages,
+        workspace=None,
+    )
     resp = extract_json_model(client, messages, OverviewLLMResponse, max_retries=max_retries)
     return InterpretationOverview(**resp.model_dump())

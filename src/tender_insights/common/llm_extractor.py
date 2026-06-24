@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 
 from doc_chunk.llm.client import LLMClient
 from tender_insights.errors import LLMExtractionError
+from tender_insights.interpret.response_normalize import normalize_interpretation_llm_data
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -23,6 +24,8 @@ def extract_json_model(
         raw = client.complete(messages, response_format="json")
         try:
             data = json.loads(raw)
+            if model_type.__name__ == "InterpretationLLMResponse":
+                data = normalize_interpretation_llm_data(data)
             return model_type.model_validate(data)
         except (json.JSONDecodeError, ValidationError) as exc:
             last_error = exc

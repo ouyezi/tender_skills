@@ -60,8 +60,14 @@ function renderProgress(job, dualFile) {
   document.getElementById("interpret-progress-percent").textContent = `${percent}%`;
   document.getElementById("interpret-progress-fill").style.width = `${percent}%`;
   const detail = job?.detail || "";
-  const stepText = job?.step_total ? `（${job.step_current}/${job.step_total}）` : "";
-  document.getElementById("interpret-progress-detail").textContent = `${detail}${stepText ? ` ${stepText}` : ""}`.trim();
+  const detailEl = document.getElementById("interpret-progress-detail");
+  if (stage === "interpret") {
+    const segmentProgress = job?.message || "";
+    detailEl.textContent = [segmentProgress, detail].filter(Boolean).join(" · ").trim();
+  } else {
+    const stepText = job?.step_total ? `（${job.step_current}/${job.step_total}）` : "";
+    detailEl.textContent = `${detail}${stepText ? ` ${stepText}` : ""}`.trim();
+  }
 }
 
 function hideProgress() {
@@ -114,7 +120,10 @@ async function pollJob(jobId, dualFile) {
           state.pollTimer = null;
           hideProgress();
           const msg = job.error || job.message || "解读失败";
-          setError(msg.includes("LLM") || msg.includes("API") ? `请配置 LLM_API_KEY：${msg}` : msg);
+          const needsApiKey =
+            /LLM_API_KEY|OPENAI_API_KEY|required for LLM|LLMUnavailable/i.test(msg) &&
+            !/validation error|JSON extraction failed/i.test(msg);
+          setError(needsApiKey ? `请配置 LLM_API_KEY：${msg}` : msg);
           reject(new Error(msg));
         }
       } catch (err) {
@@ -157,6 +166,73 @@ function renderTabs() {
   }
 }
 
+function renderStructureTree(nodes, depth = 0) {
+  if (!nodes?.length) {
+    return "";
+  }
+  return `<ul class="structure-tree depth-${depth}">${nodes
+    .map((node) => {
+      const mandatory = node.mandatory === false ? "（可选）" : "";
+      const childHtml = node.children?.length ? renderStructureTree(node.children, depth + 1) : "";
+      return `<li>${escapeHtml(node.title || "")}${mandatory ? ` <em>${mandatory}</em>` : ""}${childHtml}</li>`;
+    })
+    .join("")}</ul>`;
+}
+
+function renderOverview(overview) {
+  const panel = document.getElementById("overview-panel");
+  const content = document.getElementById("overview-content");
+  if (!overview || !panel || !content) {
+    return;
+  }
+  const fields = [
+    ["summary", "总览"],
+    ["disqualification_summary", "废标项"],
+    ["scoring_summary", "得分项"],
+    ["bid_risk_summary", "风险"],
+    ["directory_summary", "目录"],
+  ];
+  const html = fields
+    .filter(([key]) => overview[key])
+    .map(([key, label]) => `<p><strong>${label}：</strong>${escapeHtml(overview[key])}</p>`)
+    .join("");
+  if (!html) {
+    panel.hidden = true;
+    return;
+  }
+  content.innerHTML = html;
+  panel.hidden = false;
+}
+
+function renderScoringChildren(children) {
+  if (!children?.length) {
+    return "";
+  }
+  const rows = children
+    .map((child) => {
+      const score =
+        child.max_score != null
+          ? `${child.max_score}${child.score_range ? `（${child.score_range}）` : ""}`
+          : child.score_range || "";
+      let html = `<li class="scoring-child">`;
+      html += `<strong>${escapeHtml(child.title || "细则")}</strong>`;
+      if (score) {
+        html += ` <span class="child-score">${escapeHtml(score)}</span>`;
+      }
+      if (child.criteria) {
+        html += `<p class="child-criteria">${escapeHtml(child.criteria)}</p>`;
+      }
+      if (child.source_excerpt) {
+        html += `<details class="child-excerpt"><summary>原文摘录</summary>`;
+        html += `<blockquote>${escapeHtml(child.source_excerpt)}</blockquote></details>`;
+      }
+      html += `</li>`;
+      return html;
+    })
+    .join("");
+  return `<ul class="scoring-children">${rows}</ul>`;
+}
+
 function renderCards() {
   const container = document.getElementById("result-cards");
   container.innerHTML = "";
@@ -197,12 +273,23 @@ function renderCards() {
     if (item.criteria) {
       body += `<p><strong>评分标准：</strong>${escapeHtml(item.criteria)}</p>`;
     }
+    if (tab.key === "scoring" && item.children?.length) {
+      body += renderScoringChildren(item.children);
+    }
     if (item.severity) {
       body += `<p><span class="severity-badge ${item.severity}">${escapeHtml(item.severity)}</span> ${escapeHtml(item.risk_category || "")}</p>`;
     }
     if (item.required_sections?.length) {
       body += `<p><strong>必填章节：</strong>${escapeHtml(item.required_sections.join("、"))}</p>`;
       body += `<p><strong>强制：</strong>${item.mandatory ? "是" : "否"}</p>`;
+    }
+    if (tab.key === "directory") {
+      if (item.inferred) {
+        body += `<p><span class="inferred-badge">推断目录</span></p>`;
+      }
+      if (item.structure?.length) {
+        body += renderStructureTree(item.structure);
+      }
     }
     if (item.source_excerpt) {
       body += `<blockquote>${escapeHtml(item.source_excerpt)}</blockquote>`;
@@ -289,6 +376,7 @@ async function loadResult(sessionId) {
   const result = await api(`/api/interpret/sessions/${sessionId}/result`);
   await resolveNodeIds(sessionId, result);
   state.result = result;
+  renderOverview(result.interpretation?.overview);
   document.getElementById("result-panel").hidden = false;
   renderTabs();
   renderCards();

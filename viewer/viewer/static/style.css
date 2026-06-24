@@ -455,3 +455,54 @@ button:hover {
   color: #666;
   font-style: italic;
 }
+
+.scoring-children {
+  margin: 0.5rem 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--border, #ddd);
+}
+
+.scoring-child {
+  padding: 0.5rem 0 0.5rem 0.75rem;
+}
+
+.scoring-child + .scoring-child {
+  border-top: 1px dashed var(--border, #eee);
+}
+
+.child-score {
+  color: var(--muted, #666);
+  font-size: 0.9em;
+}
+
+.child-criteria {
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+}
+
+.child-excerpt summary {
+  cursor: pointer;
+  color: var(--link, #06c);
+  font-size: 0.9em;
+}
+
+.overview-panel {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel-bg, #f8f9fa);
+  border-radius: 6px;
+}
+
+.structure-tree {
+  margin: 0.25rem 0 0.5rem 1rem;
+  padding-left: 0.75rem;
+}
+
+.inferred-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #fff3cd;
+  font-size: 0.85em;
+}

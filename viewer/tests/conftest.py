@@ -42,6 +42,20 @@ def interpret_client(viewer_data_dir, monkeypatch):
     from viewer.services.interpret_session_store import InterpretSessionStore
     from viewer.services.session_store import SessionStore
 
+    class _InterpretFakeLLM(FakeLLMClient):
+        def __init__(self, *, segment_json: str, overview_json: str) -> None:
+            super().__init__()
+            self._segment_json = segment_json
+            self._overview_json = overview_json
+
+        def complete(self, messages, *, response_format="text", timeout=60.0):
+            user_text = " ".join(
+                str(m.get("content", "")) for m in messages if m.get("role") == "user"
+            )
+            if "已提取明细" in user_text:
+                return self._overview_json
+            return self._segment_json
+
     get_settings.cache_clear()
     get_interpret_pipeline_service.cache_clear()
 
@@ -49,26 +63,34 @@ def interpret_client(viewer_data_dir, monkeypatch):
     sessions = InterpretSessionStore(settings.interpret_sessions_file)
     jobs = InterpretJobRegistry()
 
-    fake = FakeLLMClient(
-        default_response=json.dumps(
-            {
-                "disqualification_items": [
-                    {
-                        "id": "dq-001",
-                        "title": "测试废标",
-                        "summary": "摘要",
-                        "trigger_condition": "条件",
-                        "source_excerpt": "原文",
-                        "section_path": ["第一章"],
-                        "confidence": 0.9,
-                    }
-                ],
-                "scoring_items": [],
-                "bid_risk_items": [],
-                "directory_requirements": [],
-            }
-        )
+    segment_json = json.dumps(
+        {
+            "disqualification_items": [
+                {
+                    "id": "dq-001",
+                    "title": "测试废标",
+                    "summary": "摘要",
+                    "trigger_condition": "条件",
+                    "source_excerpt": "原文",
+                    "section_path": ["第一章"],
+                    "confidence": 0.9,
+                }
+            ],
+            "scoring_items": [],
+            "bid_risk_items": [],
+            "directory_requirements": [],
+        }
     )
+    overview_json = json.dumps(
+        {
+            "summary": "概要",
+            "disqualification_summary": "废标",
+            "scoring_summary": "得分",
+            "bid_risk_summary": "风险",
+            "directory_summary": "目录",
+        }
+    )
+    fake = _InterpretFakeLLM(segment_json=segment_json, overview_json=overview_json)
 
     def factory():
         return InterpretPipelineService(

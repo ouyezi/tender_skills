@@ -6,7 +6,10 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from viewer.config import load_project_env
 from viewer.routes import content, interpret, jobs, sessions, upload, workspaces
+
+load_project_env()
 
 STATIC_DIR = Path(__file__).parent / "static"
 

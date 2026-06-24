@@ -92,8 +92,8 @@ class InterpretPipelineService:
         dual_file = len(input_paths) > 1
         step = 0
         try:
-            interpret_nodes = 1
-            step_total = len(input_paths) * _PIPELINE_SUBSTEPS + (1 if dual_file else 0) + interpret_nodes + 1
+            pipeline_steps = len(input_paths) * _PIPELINE_SUBSTEPS + (1 if dual_file else 0)
+            step_total = pipeline_steps + 2  # interpret placeholder + template; refined after pipeline
             self._report(
                 job_id,
                 stage="pipeline_1",
@@ -162,8 +162,17 @@ class InterpretPipelineService:
                 validate_merged_workspace(workspace_dir)
 
             interpret_nodes = max(self._count_interpret_nodes(workspace_dir), 1)
-            step_total = len(input_paths) * _PIPELINE_SUBSTEPS + (1 if dual_file else 0) + interpret_nodes + 1
+            step_total = pipeline_steps + interpret_nodes + 1  # +1 template
             interpret_base = step
+            self._report(
+                job_id,
+                stage="interpret",
+                message=f"开始解读，共 {interpret_nodes} 个分段",
+                step_current=interpret_base,
+                step_total=step_total,
+                detail="",
+                dual_file=dual_file,
+            )
 
             ws = OutputWorkspace.open_existing(workspace_dir)
             client = self._llm_client_factory()
