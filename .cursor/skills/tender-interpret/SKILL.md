@@ -83,7 +83,7 @@ export SEGMENT_MAX_TOKENS=12000
 
 | 字段 | 说明 |
 |------|------|
-| `schema_version` | `"1.1"` |
+| `schema_version` | `"1.2"` |
 | `source_workspace` | 工作区绝对路径 |
 | `analyzed_at` | ISO8601 分析时间 |
 | `segment_count` | 全文分段数 |
@@ -117,9 +117,20 @@ export SEGMENT_MAX_TOKENS=12000
 
 | 字段 | 说明 |
 |------|------|
-| `max_score` | 分值（float，可 null） |
+| `max_score` | 大类分值（float，可 null） |
 | `weight` | 权重描述，如 `"30%"` |
-| `criteria` | 评分标准摘要 |
+| `criteria` | 大类评分原则 |
+| `children[]` | 评分细则（`ScoringCriterionNode`） |
+
+#### `scoring_items[].children[]` — 评分细则
+
+| 字段 | 说明 |
+|------|------|
+| `title` | 细则名称 |
+| `max_score` | 该项满分 |
+| `score_range` | 分值区间，如 `"0-10"` |
+| `criteria` | 评分细则全文（含档位、加扣分规则） |
+| `source_excerpt` | 原文摘录 |
 
 ### `bid_risk_items[]` — 投标视角风险
 
@@ -134,8 +145,9 @@ export SEGMENT_MAX_TOKENS=12000
 
 | 字段 | 说明 |
 |------|------|
-| `required_sections` | 要求的章节/材料清单 |
-| `structure` | 可选树形结构（order/number/title/mandatory） |
+| `inferred` | `true` 表示从全文推断，非招标原文明确目录章节 |
+| `required_sections` | 要求的章节/材料清单（有 `structure` 时可为空） |
+| `structure` | 树形结构（order/number/title/mandatory/children） |
 | `mandatory` | 是否强制 |
 
 ### `directory_outline` — 推荐目录树

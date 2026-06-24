@@ -126,7 +126,7 @@ workspace/
 
 ```text
 workspace/
-├── interpretation.json     # schema 1.1：overview + 明细 + directory_outline
+├── interpretation.json     # schema 1.2：overview + 明细 + directory_outline
 └── interpret/
     ├── source_content.md   # OCR enrichment 后正文
     └── ocr_cache.json      # 图片 hash → OCR 文本
@@ -385,7 +385,7 @@ doc-chunk enrich ./out --classification-config ./my_classification.yaml
 
 ## tender_insights（招标语义分析）
 
-在 `doc_chunk` 工作区之上，`tender_insights` 包提供招标业务语义分析：解读（废标/得分/投标风险/目录 + 概要）、模版提取、法务审核。解读产出 `interpretation.json`（**schema 1.1**），供 agent 与下游系统消费。
+在 `doc_chunk` 工作区之上，`tender_insights` 包提供招标业务语义分析：解读（废标/得分/投标风险/目录 + 概要）、模版提取、法务审核。解读产出 `interpretation.json`（**schema 1.2**），供 agent 与下游系统消费。
 
 **设计文档：**
 
