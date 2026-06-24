@@ -6,7 +6,11 @@
 #   ./scripts/restart-viewer.sh -b         # background
 #   ./scripts/restart-viewer.sh --log-prompts
 #
-# Environment:
+# Configuration:
+#   Always loads ${REPO_ROOT}/.env before start (values in .env override the
+#   current shell for LLM_/OCR_/SEGMENT_/INTERPRET_* keys).
+#
+# Environment (optional overrides after .env):
 #   VIEWER_HOST   default 127.0.0.1
 #   VIEWER_PORT   default 8765
 #   INTERPRET_LOG_PROMPTS  set to 1 with --log-prompts
@@ -15,14 +19,74 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_PY="${ROOT}/.venv/bin/python"
+ENV_FILE="${ROOT}/.env"
 VIEWER_HOST="${VIEWER_HOST:-127.0.0.1}"
 VIEWER_PORT="${VIEWER_PORT:-8765}"
 BACKGROUND=0
 LOG_PROMPTS=0
 
+_PROJECT_ENV_OVERRIDE_PREFIXES=(LLM_ OCR_ SEGMENT_ INTERPRET_)
+
 usage() {
-  sed -n '2,12p' "$0"
+  sed -n '2,16p' "$0"
   exit "${1:-0}"
+}
+
+should_override_from_env() {
+  local key="$1"
+  if [[ "$key" == "LLM_API_KEY" ]]; then
+    return 1
+  fi
+  local prefix
+  for prefix in "${_PROJECT_ENV_OVERRIDE_PREFIXES[@]}"; do
+    if [[ "$key" == "${prefix}"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Parse KEY=VALUE lines from the repo .env (same rules as viewer.config.load_project_env).
+load_project_env() {
+  if [[ ! -f "$ENV_FILE" ]]; then
+    echo "No .env at ${ENV_FILE}" >&2
+    return 0
+  fi
+
+  local line key value stripped
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    stripped="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "$stripped" || "$stripped" == \#* ]] && continue
+    if [[ "$stripped" == export\ * ]]; then
+      stripped="${stripped#export }"
+      stripped="${stripped#"${stripped%%[![:space:]]*}"}"
+    fi
+    [[ "$stripped" != *"="* ]] && continue
+
+    key="${stripped%%=*}"
+    value="${stripped#*=}"
+    key="${key%"${key##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+
+    if [[ ${#value} -ge 2 ]]; then
+      local first="${value:0:1}"
+      local last="${value: -1}"
+      if [[ "$first" == "$last" && ( "$first" == "'" || "$first" == '"' ) ]]; then
+        value="${value:1:${#value}-2}"
+      fi
+    fi
+
+    if should_override_from_env "$key"; then
+      export "$key=$value"
+    elif [[ -z "${!key+x}" ]]; then
+      export "$key=$value"
+    fi
+  done <"$ENV_FILE"
+
+  echo "Loaded ${ENV_FILE}" >&2
+  if [[ -n "${LLM_MODEL:-}" ]]; then
+    echo "LLM_MODEL=${LLM_MODEL}" >&2
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -85,6 +149,7 @@ stop_viewer() {
 
 start_viewer() {
   cd "$ROOT"
+  load_project_env
 
   if [[ "$LOG_PROMPTS" -eq 1 ]]; then
     export INTERPRET_LOG_PROMPTS=1

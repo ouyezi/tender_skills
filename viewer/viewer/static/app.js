@@ -252,6 +252,35 @@ document.getElementById("session-select").addEventListener("change", async (even
   }
 });
 
+document.getElementById("delete-session-btn").addEventListener("click", async () => {
+  if (!state.sessionId) {
+    setProgress("请先选择会话");
+    return;
+  }
+  if (!confirm("将永久删除该会话、工作区与上传文件，是否继续？")) {
+    return;
+  }
+  try {
+    await api(`/api/sessions/${state.sessionId}`, { method: "DELETE" });
+    if (state.pollTimer) {
+      clearInterval(state.pollTimer);
+      state.pollTimer = null;
+    }
+    state.sessionId = null;
+    state.selectedNodeId = null;
+    state.collapsedNodeIds = new Set();
+    document.getElementById("content-panel").innerHTML = "";
+    document.getElementById("section-meta").textContent = "";
+    document.getElementById("outline-meta").textContent = "";
+    document.getElementById("outline-tree").innerHTML = "";
+    setProgress("", true);
+    await refreshSessions();
+  } catch (err) {
+    setProgress(err.message || "删除会话失败");
+    console.error(err);
+  }
+});
+
 async function bootstrapFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get("session");

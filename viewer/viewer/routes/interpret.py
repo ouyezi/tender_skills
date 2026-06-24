@@ -14,6 +14,8 @@ from viewer.deps import (
     get_interpret_job_registry,
     get_interpret_pipeline_service,
     get_interpret_session_store,
+    get_job_registry,
+    get_session_store,
     get_settings,
 )
 from viewer.models import (
@@ -23,6 +25,7 @@ from viewer.models import (
 )
 from viewer.services.outline_tree import build_outline_response
 from viewer.services.section_slice import slice_section
+from viewer.services.session_cleanup import delete_session_fully
 from viewer.services.workspace import validate_workspace
 
 router = APIRouter(prefix="/interpret", tags=["interpret"])
@@ -131,6 +134,63 @@ def get_interpret_session(session_id: str) -> dict:
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return session.model_dump()
+
+
+@router.delete("/sessions/{session_id}")
+def delete_interpret_session(session_id: str) -> dict:
+    settings = get_settings()
+    deleted = delete_session_fully(
+        session_id,
+        settings=settings,
+        session_store=get_session_store(),
+        interpret_store=get_interpret_session_store(),
+        job_registry=get_job_registry(),
+        interpret_job_registry=get_interpret_job_registry(),
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="session not found")
+    return {"deleted": True}
+
+
+def _read_llm_calls(workspace: Path) -> list[dict]:
+    path = workspace / "llm_calls.jsonl"
+    if not path.exists():
+        return []
+    merged: dict[str, dict] = {}
+    attempts: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        record = json.loads(stripped)
+        key = record.get("segment_id") or record.get("call_type") or f"call-{len(order)}"
+        event = record.get("event")
+        if event == "response":
+            if key in merged:
+                merged[key]["response"] = record.get("response")
+            continue
+        if event == "attempt":
+            attempts.setdefault(key, []).append(record)
+            continue
+        if key not in merged:
+            order.append(key)
+        merged[key] = record
+    for key in order:
+        if key in attempts:
+            merged[key]["attempts"] = attempts[key]
+    return [merged[key] for key in order]
+
+
+@router.get("/sessions/{session_id}/llm-calls")
+def get_interpret_llm_calls(session_id: str) -> list[dict]:
+    session = get_interpret_session_store().get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    workspace = Path(session.workspace_path)
+    if not workspace.is_dir():
+        return []
+    return _read_llm_calls(workspace)
 
 
 @router.get("/sessions/{session_id}/result", response_model=InterpretResultResponse)

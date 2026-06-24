@@ -10,14 +10,24 @@ from doc_chunk.workspace.layout import OutputWorkspace
 from tender_insights.common.segment_planner import Segment
 
 _SCORING_PATH_KEYWORDS = ("评分", "评审办法", "评标", "评审", "分值", "得分")
-_SCORING_TABLE_HEADER_KEYWORDS = ("评分说明", "分值", "得分")
-_SCORE_PATTERN = re.compile(r"\d+\s*[-~–—]\s*\d+\s*分")
-_INJECT_LOOKAHEAD_CHARS = 8000
+_SCORING_HOST_PATH_KEYWORDS = ("响应人须知", "投标人须知", "供应商须知", *_SCORING_PATH_KEYWORDS)
 
 
 def is_scoring_section_path(section_path: list[str]) -> bool:
     haystack = " ".join(section_path)
     return any(kw in haystack for kw in _SCORING_PATH_KEYWORDS)
+
+
+def is_scoring_host_section_path(section_path: list[str]) -> bool:
+    haystack = " ".join(section_path)
+    return any(kw in haystack for kw in _SCORING_HOST_PATH_KEYWORDS)
+
+
+_SCORING_TABLE_HEADER_KEYWORDS = ("评分说明", "分值", "得分")
+_SCORE_PATTERN = re.compile(r"\d+\s*[-~–—]\s*\d+\s*分")
+_INJECT_LOOKAHEAD_CHARS = 8000
+_SHORT_SEGMENT_CHARS = 200
+_EXPAND_LOOKAHEAD_CHARS = 12000
 
 
 def is_scoring_table_llm_text(llm_text: str) -> bool:
@@ -65,6 +75,41 @@ def inject_scoring_tables_into_markdown(
     for _block, llm_text in tables:
         parts.append(llm_text)
     return "\n\n".join(p for p in parts if p)
+
+
+def expand_short_segment_markdown(
+    workspace: OutputWorkspace,
+    source_md: str,
+    seg: object,
+    markdown: str,
+    *,
+    blocks: ContentBlocksFile | None,
+) -> str:
+    from tender_insights.common.section_slice import slice_for_llm
+
+    char_start = getattr(seg, "char_start", 0)
+    char_end = getattr(seg, "char_end", 0)
+    section_path = getattr(seg, "section_path", [])
+
+    if len(markdown.strip()) >= _SHORT_SEGMENT_CHARS:
+        return markdown
+    if not is_scoring_host_section_path(section_path):
+        return markdown
+
+    expanded_end = min(len(source_md), char_end + _EXPAND_LOOKAHEAD_CHARS)
+    if expanded_end <= char_end:
+        return markdown
+
+    expanded = slice_for_llm(
+        workspace,
+        source_md,
+        char_start,
+        expanded_end,
+        blocks=blocks,
+    )
+    if len(expanded.strip()) <= len(markdown.strip()):
+        return markdown
+    return expanded
 
 
 def build_scoring_table_segments(

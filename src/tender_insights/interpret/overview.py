@@ -34,6 +34,7 @@ def build_overview(
     br: list[BidRiskItem],
     dr: list[DirectoryRequirement],
     max_retries: int = 2,
+    workspace: str | None = None,
 ) -> InterpretationOverview:
     payload = {
         "disqualification_items": [
@@ -64,7 +65,14 @@ def build_overview(
     log_llm_prompt(
         call_type="overview",
         messages=messages,
-        workspace=None,
+        workspace=workspace,
+        segment_id="overview",
     )
-    resp = extract_json_model(client, messages, OverviewLLMResponse, max_retries=max_retries)
+    resp = extract_json_model(
+        client,
+        messages,
+        OverviewLLMResponse,
+        max_retries=max_retries,
+        log_context={"call_type": "overview", "segment_id": "overview"},
+    )
     return InterpretationOverview(**resp.model_dump())

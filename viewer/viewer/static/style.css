@@ -506,3 +506,32 @@ button:hover {
   background: #fff3cd;
   font-size: 0.85em;
 }
+
+.llm-payload {
+  margin: 0.5rem 0 0;
+  padding: 0.75rem;
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.llm-call-card details {
+  margin-top: 0.5rem;
+}
+
+.card-meta {
+  color: #666;
+  font-size: 0.85em;
+  margin: 0.15rem 0;
+}
+
+#delete-session-btn,
+#delete-interpret-session-btn {
+  color: #b00020;
+  border-color: #e0b4b4;
+}
