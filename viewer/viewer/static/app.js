@@ -3,6 +3,7 @@ const state = {
   selectedNodeId: null,
   pollTimer: null,
   collapsedNodeIds: new Set(),
+  currentSectionMarkdown: null,
 };
 
 async function api(path, options = {}) {
@@ -20,6 +21,14 @@ function rewriteAssetUrls(markdown, sessionId) {
     /(!\[[^\]]*\]\()(?!https?:\/\/|\/api\/)([^)]+)\)/g,
     (match, prefix, path) => `${prefix}${base}${path.replace(/^\//, "")})`,
   );
+}
+
+function clearSectionView() {
+  state.currentSectionMarkdown = null;
+  document.getElementById("content-panel").innerHTML = "";
+  const metaBar = document.getElementById("section-meta");
+  metaBar.hidden = true;
+  document.getElementById("section-meta-text").textContent = "";
 }
 
 function setProgress(message, hidden = false) {
@@ -134,6 +143,7 @@ async function selectNode(nodeId) {
   state.selectedNodeId = nodeId;
   markTreeSelection(nodeId);
   const section = await api(`/api/sessions/${state.sessionId}/sections/${nodeId}`);
+  state.currentSectionMarkdown = section.markdown;
   const markdown = rewriteAssetUrls(section.markdown, state.sessionId);
   const html = marked.parse(markdown, {
     mangle: false,
@@ -142,8 +152,26 @@ async function selectNode(nodeId) {
   document.getElementById("content-panel").innerHTML = html;
   const pathLabel =
     section.section_path?.length ? section.section_path.join(" › ") : section.title;
-  document.getElementById("section-meta").textContent =
+  document.getElementById("section-meta-text").textContent =
     `${pathLabel} · char: ${section.char_start}–${section.char_end} · needs_review: ${section.needs_review}`;
+  document.getElementById("section-meta").hidden = false;
+}
+
+async function copySectionMarkdown() {
+  const markdown = state.currentSectionMarkdown;
+  if (!markdown) return;
+  const button = document.getElementById("copy-markdown-btn");
+  try {
+    await navigator.clipboard.writeText(markdown);
+    const originalText = button.textContent;
+    button.textContent = "已复制";
+    setTimeout(() => {
+      button.textContent = originalText;
+    }, 1500);
+  } catch (err) {
+    console.error(err);
+    setProgress("复制失败，请检查浏览器剪贴板权限");
+  }
 }
 
 async function pollJob(jobId) {
@@ -183,8 +211,7 @@ document.getElementById("upload-input").addEventListener("change", async (event)
     state.sessionId = result.session_id;
     state.selectedNodeId = null;
     state.collapsedNodeIds = new Set();
-    document.getElementById("content-panel").innerHTML = "";
-    document.getElementById("section-meta").textContent = "";
+    clearSectionView();
     await refreshSessions();
     await pollJob(result.job_id);
   } catch (err) {
@@ -206,8 +233,7 @@ document.getElementById("open-btn").addEventListener("click", async () => {
     state.sessionId = result.session_id;
     state.selectedNodeId = null;
     state.collapsedNodeIds = new Set();
-    document.getElementById("content-panel").innerHTML = "";
-    document.getElementById("section-meta").textContent = "";
+    clearSectionView();
     await refreshSessions();
     await loadOutline();
   } catch (err) {
@@ -228,8 +254,7 @@ document.getElementById("reextract-btn").addEventListener("click", async () => {
     const result = await api(`/api/sessions/${state.sessionId}/reextract`, { method: "POST" });
     state.selectedNodeId = null;
     state.collapsedNodeIds = new Set();
-    document.getElementById("content-panel").innerHTML = "";
-    document.getElementById("section-meta").textContent = "";
+    clearSectionView();
     await refreshSessions();
     await pollJob(result.job_id);
   } catch (err) {
@@ -242,8 +267,7 @@ document.getElementById("session-select").addEventListener("change", async (even
   state.sessionId = event.target.value || null;
   state.selectedNodeId = null;
   state.collapsedNodeIds = new Set();
-  document.getElementById("content-panel").innerHTML = "";
-  document.getElementById("section-meta").textContent = "";
+  clearSectionView();
   try {
     await loadOutline();
   } catch (err) {
@@ -269,8 +293,7 @@ document.getElementById("delete-session-btn").addEventListener("click", async ()
     state.sessionId = null;
     state.selectedNodeId = null;
     state.collapsedNodeIds = new Set();
-    document.getElementById("content-panel").innerHTML = "";
-    document.getElementById("section-meta").textContent = "";
+    clearSectionView();
     document.getElementById("outline-meta").textContent = "";
     document.getElementById("outline-tree").innerHTML = "";
     setProgress("", true);
@@ -279,6 +302,10 @@ document.getElementById("delete-session-btn").addEventListener("click", async ()
     setProgress(err.message || "删除会话失败");
     console.error(err);
   }
+});
+
+document.getElementById("copy-markdown-btn").addEventListener("click", () => {
+  copySectionMarkdown().catch(console.error);
 });
 
 async function bootstrapFromUrl() {
