@@ -30,3 +30,16 @@ def test_interpret_js_renders_overview() -> None:
 def test_interpret_html_has_overview_panel() -> None:
     html = (STATIC / "interpret.html").read_text(encoding="utf-8")
     assert 'id="overview-panel"' in html
+
+
+def test_interpret_html_has_brief_button() -> None:
+    html = (STATIC / "interpret.html").read_text(encoding="utf-8")
+    assert 'id="brief-btn"' in html
+    assert "提取概要" in html
+
+
+def test_interpret_js_has_brief_tab() -> None:
+    js = (STATIC / "interpret.js").read_text(encoding="utf-8")
+    assert 'key: "brief"' in js
+    assert "renderBrief" in js
+    assert "upload?job_kind=brief" in js

@@ -81,7 +81,7 @@ INTERPRET_LOG_PROMPTS=1 INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts python 
 | 章节 Markdown | 右侧按 outline 字符锚点从 `content.md` 截取并渲染 |
 | 图片代理 | 工作区 `images/` 等资源通过 API 加载，不直接暴露文件路径 |
 | Pipeline 进度 | 上传后轮询 job 状态，显示 extract / outline / tree / chunk 阶段 |
-| **招标解读** | `/interpret` 页：上传 1～2 个招标文件 → 合并工作区 → 解读 + 模版提取 → 分类 Tab 展示 |
+| **招标解读** | `/interpret` 页：上传 1～2 个招标文件 → **提取概要**（`brief`）或 **开始解读** → 分类 Tab 展示（含「概要」Tab） |
 
 **不在 v1 范围**：chunk / document_tree 视图、LLM refine / enrich UI、在线编辑、导出、远程部署、法务审核 UI。
 
@@ -113,8 +113,10 @@ INTERPRET_LOG_PROMPTS=1 INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts python 
 
 1. 打开 `http://127.0.0.1:8765/interpret`
 2. 选择文件 1（必填），可选补充文件 2
-3. 点击「开始解读」，等待进度完成
-4. 在 Tab 中查看废标项、得分项、风险、目录要求、模版
+3. 点击「**提取概要**」或「开始解读」：
+   - **已选会话、未选新文件**：在当前会话工作区上重跑（pipeline 已完成则只跑 LLM 阶段）
+   - **选了新文件**：新建会话并上传处理
+4. 在 Tab 中查看概要、废标项、得分项、风险、目录要求、模版
 5. 卡片可「查看原文」或跳转切片预览深链接
 
 ---
@@ -137,6 +139,10 @@ INTERPRET_LOG_PROMPTS=1 INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts python 
 | `GET` | `/api/jobs/{job_id}` | pipeline 任务状态与进度 |
 | `GET` | `/interpret` | 招标解读页 |
 | `POST` | `/api/interpret/upload` | multipart：`file1`（必填）、`file2`（可选） |
+| `POST` | `/api/interpret/brief-upload` | 上传新文件；跑 pipeline + brief |
+| `POST` | `/api/interpret/sessions/{id}/brief` | **对已选会话**重跑概要（工作区就绪则跳过 pipeline） |
+| `POST` | `/api/interpret/sessions/{id}/run` | **对已选会话**重跑解读（工作区就绪则跳过 pipeline） |
+| `GET` | `/api/interpret/sessions/{id}/brief` | 招标基础概要 JSON（`tender_brief.json`） |
 | `GET` | `/api/interpret/jobs/{job_id}` | 解读任务状态（含 `progress_percent`、`message`、`detail`、`step_current`/`step_total`） |
 | `GET` | `/api/interpret/sessions/{id}/job` | 按会话查最近一次 job（页面刷新后续看进度用） |
 | `GET` | `/api/interpret/sessions` | 解读会话列表 |

@@ -1,6 +1,8 @@
-# doc_chunk
+# tender_skills
 
-独立 Python 包，将 Word/PDF 标书文档处理为结构化工作区，供 tender_skills 及下游 agent 消费。
+标书文档处理 monorepo：`doc_chunk`（提取与切片）+ `tender_insights`（招标语义分析）+ `viewer`（本机调试 UI）。
+
+**`doc_chunk`** 将 Word/PDF 标书处理为结构化工作区，供下游 agent 与 `tender_insights` 消费。
 
 **流水线：** 提取 → 目录树 → 文档树 → （可选）LLM 目录优化 → 分块 → 元数据增强
 
@@ -122,14 +124,18 @@ workspace/
 └── logs/
 ```
 
-`tender-insights interpret` 会在工作区内追加（不修改 `content.md`）：
+`tender-insights interpret` / `brief` 会在工作区内追加（不修改 `content.md`）：
 
 ```text
 workspace/
 ├── interpretation.json     # schema 1.2：overview + 明细 + directory_outline
+├── tender_brief.json       # schema 1.0：五类核心字段 + summary_text（brief 命令）
+├── tender_brief.txt        # 纯文本概要（≤500 字）
+├── llm_calls.jsonl         # interpret 阶段 LLM 调用日志（prompt / response / attempt）
 └── interpret/
     ├── source_content.md   # OCR enrichment 后正文
-    └── ocr_cache.json      # 图片 hash → OCR 文本
+    ├── ocr_cache.json      # 图片 hash → OCR 文本
+    └── interpret_report.md # 可选：tender-insights render 生成
 ```
 
 ---
@@ -391,6 +397,7 @@ doc-chunk enrich ./out --classification-config ./my_classification.yaml
 
 - v1 总览：[`docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md`](docs/superpowers/specs/2026-06-16-tender-insights-skills-design.md)
 - **interpret v2**：[`docs/superpowers/specs/2026-06-24-interpret-v2-design.md`](docs/superpowers/specs/2026-06-24-interpret-v2-design.md) · [实现计划](docs/superpowers/plans/2026-06-24-interpret-v2.md)
+- **interpret 质量与 Viewer**：[`docs/superpowers/specs/2026-06-24-interpret-quality-viewer-requirements.md`](docs/superpowers/specs/2026-06-24-interpret-quality-viewer-requirements.md)
 
 ### interpret v2 要点
 
@@ -398,10 +405,13 @@ doc-chunk enrich ./out --classification-config ./my_classification.yaml
 |----|------|
 | 覆盖范围 | **全文分段**提取，不再依赖章节标题关键词路由 |
 | 分段策略 | 优先复用 `chunks/`；在 2k–12k tokens 间 merge/split，保证逻辑完整 |
+| 评分表增强 | 短评分段注入表格侧车 `llm_text`；全局扫描追加 `seg-scoring-*` 专段（最多 5 个）；混合「格式+评分表」段 Prompt 要求同时提取目录与得分 |
 | LLM 调用 | 每段 **1 次**（固定 system prompt，一次返回四类明细）；合并后再 **1 次**生成概要 |
 | 概要 + 明细 | `overview`（维度摘要）+ `disqualification_items` / `scoring_items` / `bid_risk_items` / `directory_requirements` |
-| 目录格式 | `directory_outline`（树形，供下游目录生成）+ `directory_requirements.structure` |
+| 得分细则 | `scoring_items[].children[]`（`max_score`、`score_range`、`criteria` 等子项） |
+| 目录格式 | `directory_outline`（树形，供下游目录生成）+ `directory_requirements.structure`（含 `inferred` 标记） |
 | 图片 OCR | 对 `content.md` 引用的图片调用 **qwen-vl-ocr**（hash 缓存、logo 跳过、大图压缩）；**不修改** `content.md` |
+| 调试日志 | 工作区写入 `llm_calls.jsonl`；stderr 输出 `interpret_llm_prompt`（可用 `INTERPRET_LOG_PROMPTS=0` 关闭） |
 | 边界 | 只改 `tender_insights`；`doc_chunk` 工作区只读 |
 
 ### 安装
@@ -427,12 +437,12 @@ python -m pytest tests/tender_insights/ -v
 输入支持 **工作区目录** 或 **原始 `.docx`/`.pdf`**（后者自动调用 `doc-chunk pipeline`，参数 `skip_refine=True, skip_enrich=True`，与 Viewer 一致）。
 
 ```bash
-# 解读：废标项、得分项、投标风险、目录要求（单文件）
+# 解读：废标项、得分项、投标风险、目录要求 + 模版提取（单文件；interpret 默认含 template）
 .venv/bin/tender-insights interpret /path/to/bid.docx \
   -o ./output/my-bid \
   --overwrite
 
-# 双文件自动合并解读（如招标正文 + 技术规范）
+# 双文件自动合并解读（最多 2 个原始文档，如招标正文 + 技术规范）
 .venv/bin/tender-insights interpret /path/to/bid.docx /path/to/spec.docx \
   -o ./output/my-bid \
   --overwrite
@@ -447,8 +457,39 @@ python -m pytest tests/tender_insights/ -v
 # 法务：合规风险 + 待确认事项（独立于 interpret）
 .venv/bin/tender-insights legal ./output/my-bid
 
-# 一次性跑 interpret + template + legal
+# 一次性跑 interpret（含模版）+ legal
 .venv/bin/tender-insights all /path/to/bid.docx -o ./output/my-bid --overwrite
+
+# 招标基础概要：全文提取核心刚需信息（≤500 字，供下游分析模块作背景数据源）
+.venv/bin/tender-insights brief /path/to/bid.docx \
+  -o ./output/my-bid \
+  --overwrite
+```
+
+### 招标基础概要（`brief`）
+
+读取招标文件**全文**，生成标准化基础背景摘要，仅客观罗列原文关键事实，不展开延伸解读。适合作为 interpret / legal / 模版等模块的底层上下文。
+
+**必提取字段**（`tender_brief.json` → `fields`）：
+
+| 字段 | 含义 |
+|------|------|
+| `issuer_company` | 招标发起企业全称 |
+| `procurement_subject` | 本次招标标的 / 采购完整核心内容 |
+| `budget_info` | 项目总预算、招标控制价、预估金额 |
+| `qualification_requirements` | 投标人硬性准入资质、资格基本要求 |
+| `key_timelines` | 项目工期、交付、开标核心时间节点 |
+
+**输出约束：**
+
+- `summary_text`（同步写入 `tender_brief.txt`）总篇幅 **≤ 500 字**
+- 语言精炼直白，分段呈现五个信息层级
+- 正文超过 **20,000 字**时自动分片提取，再合并为最终概要
+
+```bash
+# 可选环境变量
+export BRIEF_CHUNK_CHAR_LIMIT=20000    # 分片阈值（字符）
+export BRIEF_SUMMARY_MAX_CHARS=500     # 概要字数上限
 ```
 
 ### 产出文件
@@ -456,24 +497,28 @@ python -m pytest tests/tender_insights/ -v
 | 命令 | 产物 | 说明 |
 |------|------|------|
 | `interpret` | `interpret/interpret_report.md` | 可选：`tender-insights render` 生成的 Markdown 报告 |
-| `interpret` | `interpretation.json` | schema **1.1**：概要 `overview`、四类明细、`directory_outline` |
+| `interpret` | `interpretation.json` | schema **1.2**：概要 `overview`、四类明细、`directory_outline` |
 | `interpret` | `interpret/source_content.md` | OCR enrichment 后正文（锚点基准；不覆盖 `content.md`） |
 | `interpret` | `interpret/ocr_cache.json` | 图片 SHA256 → OCR 文本缓存 |
-| `template` | `templates/index.json` + `templates/*.md` | 嵌入正文模版切片 |
+| `interpret` | `llm_calls.jsonl` | LLM 调用日志（prompt、response、重试 attempt） |
+| `interpret` | `templates/index.json` + `templates/*.md` | 嵌入正文模版切片（`run_interpret_job` 默认开启） |
+| `template` | `templates/index.json` + `templates/*.md` | 单独跑模版提取 |
+| `brief` | `tender_brief.json` | schema **1.0**：五类核心字段 + `summary_text` |
+| `brief` | `tender_brief.txt` | 纯文本概要（≤500 字，与 JSON 中 `summary_text` 一致） |
 | `legal` | `legal_review.json` | `risk_items`（法务合规）+ `pending_confirmations` |
 
 工作区 `manifest.json` 会追加对应 `stages` 与 `outputs` 条目。
 
-#### `interpretation.json` 主要字段（1.1）
+#### `interpretation.json` 主要字段（1.2）
 
 | 字段 | 说明 |
 |------|------|
 | `overview.summary` | 整份标书解读概要 |
 | `overview.*_summary` | 废标 / 得分 / 投标风险 / 目录 各维度摘要 |
 | `disqualification_items` | 废标项明细 |
-| `scoring_items` | 得分项明细 |
+| `scoring_items` | 得分项明细（含 `children[]` 评分细则） |
 | `bid_risk_items` | 投标视角风险明细 |
-| `directory_requirements` | 目录/文件组成要求（含可选 `structure` 树） |
+| `directory_requirements` | 目录/文件组成要求（含 `structure` 树与 `inferred` 标记） |
 | `directory_outline` | 推荐目录树（`nodes[]`，供下游目录生成） |
 | `segment_count` | 全文分段数 |
 | `ocr_image_count` | OCR API 实际调用次数 |
@@ -497,6 +542,10 @@ export OCR_ENABLED=true                 # 设为 false 跳过 OCR
 export OCR_MODEL=qwen-vl-ocr
 export SEGMENT_MIN_TOKENS=2000
 export SEGMENT_MAX_TOKENS=12000
+
+# interpret 调试日志（可选）
+export INTERPRET_LOG_PROMPTS=1          # 设为 0 关闭 stderr 日志
+export INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts  # 额外按段写入 JSON 文件
 ```
 
 可与 `tender_knowledge` 共用同一 `.env`（`LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL`）。
@@ -509,6 +558,10 @@ export SEGMENT_MAX_TOKENS=12000
 | `SEGMENT_MAX_TOKENS` | `12000` | 单段送 LLM 上限 |
 | `OCR_LOGO_MAX_BYTES` | `10240` | ≤ 此大小且宽/高 < 128px 视为 logo，跳过 OCR |
 | `OCR_MAX_LONG_EDGE` | `1500` | OCR 前图片长边压缩上限（像素） |
+| `INTERPRET_LOG_PROMPTS` | `1` | 是否输出 LLM prompt 到 stderr |
+| `INTERPRET_LOG_PROMPTS_DIR` | （未设置） | 若设置，额外将每次调用写入 `{segment_id}.json` |
+| `BRIEF_CHUNK_CHAR_LIMIT` | `20000` | `brief` 全文分片阈值（字符） |
+| `BRIEF_SUMMARY_MAX_CHARS` | `500` | `brief` 概要字数上限 |
 
 ### Python API
 
@@ -516,13 +569,25 @@ export SEGMENT_MAX_TOKENS=12000
 from pathlib import Path
 from tender_insights.api import (
     resolve_workspace_path,
+    prepare_workspaces,
     interpret_document,
+    run_interpret_job,
+    extract_tender_brief,
     extract_templates,
     review_legal,
 )
 
-ws = resolve_workspace_path(
-    Path("/path/to/bid.docx"),
+# 招标基础概要（≤500 字）
+ws = resolve_workspace_path(Path("/path/to/bid.docx"), output_dir=Path("./output/my-bid"), overwrite=True)
+brief = extract_tender_brief(ws)
+print(brief.summary_text)
+
+# 解读 + 模版
+run_interpret_job(ws)  # interpret + template，写入 llm_calls.jsonl
+
+# 双文件合并
+ws = prepare_workspaces(
+    [Path("/path/to/bid.docx"), Path("/path/to/spec.docx")],
     output_dir=Path("./output/my-bid"),
     overwrite=True,
 )
@@ -570,28 +635,60 @@ python -m pytest tests/unit tests/contract -v
 | 工作区 Schema | [`specs/001-document-extract-chunk/contracts/workspace-schemas.md`](specs/001-document-extract-chunk/contracts/workspace-schemas.md) |
 | **Word 表格提取（004）** | [`docs/superpowers/specs/2026-06-17-docx-table-extract-design.md`](docs/superpowers/specs/2026-06-17-docx-table-extract-design.md) |
 | **tender_insights interpret v2** | [`docs/superpowers/specs/2026-06-24-interpret-v2-design.md`](docs/superpowers/specs/2026-06-24-interpret-v2-design.md) |
+| **interpret 质量与 Viewer** | [`docs/superpowers/specs/2026-06-24-interpret-quality-viewer-requirements.md`](docs/superpowers/specs/2026-06-24-interpret-quality-viewer-requirements.md) |
 
 ---
 
-## Viewer（调试 UI）
+## Viewer（本机调试 UI）
 
-独立附属应用 `viewer/`，供本机上传/打开工作区、浏览 outline 树与章节 Markdown（左侧目录 + 右侧原文）。Outline 父节点支持展开/收起，便于浏览深层目录。
+独立附属应用 `viewer/`，绑定 `127.0.0.1`、无鉴权，供本机调试切片与招标解读。两个页面通过顶栏切换：
+
+| 页面 | 路径 | 能力 |
+|------|------|------|
+| **切片预览** | `/` | 上传 `.docx`/`.pdf` 或打开已有工作区 → `extract → outline → tree → chunk`；左侧 outline 树（可展开/收起）+ 右侧章节 Markdown |
+| **招标解读** | `/interpret` | 上传 1～2 个招标文件 → 合并工作区 → interpret + template；Tab 展示废标/得分/风险/目录/模版/LLM 调用 |
+
+### 切片预览
+
+- 上传或输入工作区路径后立即浏览；`needs_review` 节点有警告标识
+- **重新提取**：删除当前工作区产出并按原文件重跑 pipeline
+- **删除会话**：移除会话索引及关联工作区/上传文件
+- **复制 Markdown**：复制当前章节的原始 Markdown
+- **深链接**：`/?session={id}&node={node_id}`，解读页可跳转回对应章节
+- 图片等资源经 `/api/sessions/{id}/assets/` 代理加载
+
+### 招标解读
+
+- 双文件时展示 pipeline_1 → pipeline_2 → merge → interpret → template 进度
+- **解读概要**面板展示 `overview` 各维度摘要
+- 得分项 Tab 渲染 `scoring_items[].children[]` 细则；目录 Tab 展示 `structure` 树与 `inferred` 标记
+- **LLM 调用** Tab 读取工作区 `llm_calls.jsonl`，便于对照 prompt 与响应
+- 卡片支持「查看原文」与跳转切片预览深链接
+
+### 安装与启动
 
 ```bash
+pip install -e ".[dev]"
 pip install -e "./viewer[dev]"
 python -m viewer
 # → http://127.0.0.1:8765
 ```
 
-详见 [`viewer/README.md`](viewer/README.md)。
+解读页需配置 `LLM_API_KEY`（与 `tender_insights` 一致）。调试时可开启 prompt 日志：
+
+```bash
+INTERPRET_LOG_PROMPTS=1 INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts python -m viewer
+```
+
+REST API、环境变量与完整功能列表见 [`viewer/README.md`](viewer/README.md)。
 
 ---
 
 ## 限制（v1）
 
-- 无生产级 Web UI（仅有本机调试 viewer）
+- 无生产级远程/多用户 Web 部署（仅有本机 viewer）
 - `doc_chunk` 提取阶段无图片 OCR（interpret v2 在 `tender_insights` 内对引用图片做 OCR）
 - 不写入 tender_knowledge 数据库
 - `.doc` / `.docm` 不直接提取，需先转为 `.docx`
 - PPT 不在首版支持范围
-- interpret 暂不支持多文件工作区合并分析；zip 附件包模版不在范围
+- interpret 最多合并 **2** 个原始文档（CLI 与 Viewer 均支持）；不支持 3+ 文件、zip 附件包或法务审核 UI

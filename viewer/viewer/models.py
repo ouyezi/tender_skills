@@ -73,10 +73,12 @@ class InterpretSessionRecord(BaseModel):
 class InterpretJobState(BaseModel):
     job_id: str
     session_id: str
+    job_kind: Literal["interpret", "brief"] = "interpret"
     stage: Literal[
         "pipeline_1",
         "pipeline_2",
         "merge",
+        "brief",
         "interpret",
         "template",
         "done",

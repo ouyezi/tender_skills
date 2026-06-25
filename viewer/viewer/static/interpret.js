@@ -2,20 +2,33 @@ const state = {
   sessionId: null,
   pollTimer: null,
   result: null,
-  activeTab: "disqualification",
+  brief: null,
+  activeTab: "brief",
   llmCalls: [],
+  pendingJobKind: "interpret",
 };
 
 const STAGES = ["pipeline_1", "pipeline_2", "merge", "interpret", "template"];
+const BRIEF_STAGES = ["pipeline_1", "pipeline_2", "merge", "brief"];
 const STAGE_LABELS = {
   pipeline_1: "提取文件 1",
   pipeline_2: "提取文件 2",
   merge: "合并工作区",
+  brief: "提取概要",
   interpret: "解读招标",
   template: "提取模版",
 };
 
+const BRIEF_FIELD_LABELS = [
+  { key: "issuer_company", label: "招标发起企业" },
+  { key: "procurement_subject", label: "招标标的 / 采购内容" },
+  { key: "budget_info", label: "预算 / 控制价" },
+  { key: "qualification_requirements", label: "准入资质" },
+  { key: "key_timelines", label: "工期与时间节点" },
+];
+
 const TABS = [
+  { key: "brief", label: "概要", field: null },
   { key: "disqualification", label: "废标项", field: "disqualification_items" },
   { key: "scoring", label: "得分项", field: "scoring_items" },
   { key: "risk", label: "风险", field: "bid_risk_items" },
@@ -41,11 +54,17 @@ function setError(message, hidden = false) {
   }
 }
 
+function visibleStages(job, dualFile) {
+  const kind = job?.job_kind || state.pendingJobKind || "interpret";
+  const base = kind === "brief" ? BRIEF_STAGES : STAGES;
+  return dualFile ? base : base.filter((s) => s !== "pipeline_2" && s !== "merge");
+}
+
 function renderProgress(job, dualFile) {
   const panel = document.getElementById("interpret-progress");
   panel.hidden = false;
   const useDual = job?.dual_file ?? dualFile;
-  const visible = useDual ? STAGES : STAGES.filter((s) => s !== "pipeline_2" && s !== "merge");
+  const visible = visibleStages(job, useDual);
   const stage = job?.stage || "pipeline_1";
   const stepsEl = document.getElementById("interpret-progress-steps");
   stepsEl.innerHTML = visible
@@ -66,6 +85,13 @@ function renderProgress(job, dualFile) {
     const chapter = job?.detail || "";
     document.getElementById("interpret-progress-label").textContent = segText;
     detailEl.textContent = chapter;
+  } else if (stage === "brief") {
+    const segTotal = job?.segment_total ?? 0;
+    const segCurrent = job?.segment_current ?? 0;
+    const segText =
+      segTotal > 0 ? `概要分片 (${segCurrent}/${segTotal})` : job?.message || "提取招标基础概要";
+    document.getElementById("interpret-progress-label").textContent = segText;
+    detailEl.textContent = job?.detail || "";
   } else {
     document.getElementById("interpret-progress-label").textContent =
       job?.message || STAGE_LABELS[stage] || "处理中…";
@@ -95,7 +121,7 @@ async function refreshSessions() {
     state.sessionId = sessions[0].id;
     select.value = state.sessionId;
     if (sessions[0].status === "success") {
-      await loadResult(state.sessionId);
+      await loadSessionData(state.sessionId);
     } else if (sessions[0].status === "running") {
       await resumeRunningSession(state.sessionId);
     }
@@ -112,7 +138,10 @@ async function pollJob(jobId, dualFile) {
         const job = await api(`/api/interpret/jobs/${jobId}`);
         if (job.status === "running") {
           renderProgress(job, dualFile);
-          if (job.stage === "interpret" || job.stage === "template") {
+          if (job.stage === "brief") {
+            state.activeTab = "brief";
+            showResultPanel();
+          } else if (job.stage === "interpret" || job.stage === "template") {
             showResultPanel();
             await loadLlmCalls(job.session_id);
           }
@@ -123,7 +152,13 @@ async function pollJob(jobId, dualFile) {
           renderProgress(job, dualFile);
           setError("", true);
           await refreshSessions();
-          await loadResult(job.session_id);
+          if (job.job_kind === "brief") {
+            await loadBrief(job.session_id);
+            state.activeTab = "brief";
+            showResultPanel();
+          } else {
+            await loadSessionData(job.session_id);
+          }
           setTimeout(hideProgress, 1500);
           resolve(job);
         } else if (job.status === "failed") {
@@ -156,7 +191,7 @@ async function resumeRunningSession(sessionId) {
   try {
     const job = await api(`/api/interpret/sessions/${sessionId}/job`);
     if (job.status === "running") {
-      await enterRunningSession(sessionId, job.job_id, job.dual_file);
+      await enterRunningSession(sessionId, job.job_id, job.dual_file, job.job_kind || "interpret");
     }
   } catch {
     // no active job for this session
@@ -254,11 +289,51 @@ function renderScoringChildren(children) {
   return `<ul class="scoring-children">${rows}</ul>`;
 }
 
+function renderBrief(container) {
+  if (!state.brief) {
+    const hint = state.pendingJobKind === "brief" ? "概要提取进行中，请稍候…" : "尚未提取招标基础概要";
+    container.innerHTML = `<p class="empty-tab">${hint}</p>`;
+    return;
+  }
+  const brief = state.brief;
+  let html = '<article class="result-card brief-card">';
+  if (brief.summary_text) {
+    html += `<section class="brief-summary"><h3>基础概要</h3><p class="brief-summary-text">${escapeHtml(
+      brief.summary_text,
+    )}</p>`;
+    if (brief.summary_char_count != null) {
+      html += `<p class="card-meta">共 ${brief.summary_char_count} 字</p>`;
+    }
+    html += `</section>`;
+  }
+  if (brief.fields) {
+    html += `<section class="brief-fields"><h3>结构化字段</h3><dl class="brief-field-list">`;
+    for (const { key, label } of BRIEF_FIELD_LABELS) {
+      const value = brief.fields[key];
+      if (!value) {
+        continue;
+      }
+      html += `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`;
+    }
+    html += `</dl></section>`;
+  }
+  if (brief.segment_count != null && brief.segment_count > 1) {
+    html += `<p class="card-meta">全文分 ${brief.segment_count} 片提取后合并</p>`;
+  }
+  html += `</article>`;
+  container.innerHTML = html;
+}
+
 function renderCards() {
   const container = document.getElementById("result-cards");
   container.innerHTML = "";
   const tab = TABS.find((t) => t.key === state.activeTab);
   if (!tab) {
+    return;
+  }
+
+  if (tab.key === "brief") {
+    renderBrief(container);
     return;
   }
 
@@ -493,23 +568,62 @@ async function loadLlmCalls(sessionId) {
   renderCards();
 }
 
-async function enterRunningSession(sessionId, jobId, dualFile) {
-  state.sessionId = sessionId;
-  state.result = null;
-  document.getElementById("overview-panel").hidden = true;
-  showResultPanel();
-  await loadLlmCalls(sessionId);
-  await pollJob(jobId, dualFile);
+async function loadBrief(sessionId) {
+  if (!sessionId) {
+    state.brief = null;
+    return false;
+  }
+  try {
+    state.brief = await api(`/api/interpret/sessions/${sessionId}/brief`);
+    return true;
+  } catch {
+    state.brief = null;
+    return false;
+  }
 }
 
 async function loadResult(sessionId) {
   state.sessionId = sessionId;
-  const result = await api(`/api/interpret/sessions/${sessionId}/result`);
-  await resolveNodeIds(sessionId, result);
-  state.result = result;
-  await loadLlmCalls(sessionId);
-  renderOverview(result.interpretation?.overview);
+  try {
+    const result = await api(`/api/interpret/sessions/${sessionId}/result`);
+    await resolveNodeIds(sessionId, result);
+    state.result = result;
+    await loadLlmCalls(sessionId);
+    renderOverview(result.interpretation?.overview);
+    return true;
+  } catch {
+    state.result = null;
+    return false;
+  }
+}
+
+async function loadSessionData(sessionId) {
+  state.sessionId = sessionId;
+  const hasBrief = await loadBrief(sessionId);
+  const hasResult = await loadResult(sessionId);
+  if (!hasResult) {
+    await loadLlmCalls(sessionId);
+    document.getElementById("overview-panel").hidden = true;
+  }
+  if (hasBrief && !hasResult) {
+    state.activeTab = "brief";
+  }
   showResultPanel();
+  return { hasBrief, hasResult };
+}
+
+async function enterRunningSession(sessionId, jobId, dualFile, jobKind = "interpret") {
+  state.sessionId = sessionId;
+  state.result = null;
+  state.pendingJobKind = jobKind;
+  if (jobKind !== "brief") {
+    document.getElementById("overview-panel").hidden = true;
+  }
+  showResultPanel();
+  if (jobKind !== "brief") {
+    await loadLlmCalls(sessionId);
+  }
+  await pollJob(jobId, dualFile);
 }
 
 async function openSourcePanel(sessionId, nodeId) {
@@ -529,36 +643,140 @@ function rewriteAssetUrls(markdown, sessionId) {
   );
 }
 
+function sessionDualFile(session) {
+  return Boolean(session?.source_files?.length > 1);
+}
+
+async function resolveDualFile(sessionId) {
+  if (!sessionId) {
+    return false;
+  }
+  try {
+    const session = await api(`/api/interpret/sessions/${sessionId}`);
+    return sessionDualFile(session);
+  } catch {
+    return false;
+  }
+}
+
+async function startBriefJob({ sessionId, jobId, dualFile }) {
+  state.sessionId = sessionId;
+  state.pendingJobKind = "brief";
+  state.activeTab = "brief";
+  document.getElementById("overview-panel").hidden = true;
+  showResultPanel();
+  await refreshSessions();
+  document.getElementById("interpret-session-select").value = sessionId;
+  await pollJob(jobId, dualFile);
+}
+
+async function startInterpretJob({ sessionId, jobId, dualFile }) {
+  state.sessionId = sessionId;
+  state.pendingJobKind = "interpret";
+  state.result = null;
+  document.getElementById("overview-panel").hidden = true;
+  showResultPanel();
+  await refreshSessions();
+  document.getElementById("interpret-session-select").value = sessionId;
+  await pollJob(jobId, dualFile);
+}
+
+document.getElementById("brief-btn").addEventListener("click", async () => {
+  const file1 = document.getElementById("file1-input").files[0];
+  const file2 = document.getElementById("file2-input").files[0];
+  const sessionId = state.sessionId || document.getElementById("interpret-session-select").value || null;
+  if (!file1 && !sessionId) {
+    setError("请选择文件，或在下拉框中选择已有会话");
+    return;
+  }
+  const briefBtn = document.getElementById("brief-btn");
+  const startBtn = document.getElementById("start-btn");
+  briefBtn.disabled = true;
+  startBtn.disabled = true;
+  setError("", true);
+  try {
+    let result;
+    let dualFile = false;
+    if (file1) {
+      const form = new FormData();
+      form.append("file1", file1);
+      if (file2) {
+        form.append("file2", file2);
+      }
+      dualFile = Boolean(file2);
+      state.brief = null;
+      state.result = null;
+      renderProgress(
+        { stage: "pipeline_1", job_kind: "brief", message: "上传完成，开始提取概要…", progress_percent: 0 },
+        dualFile,
+      );
+      result = await api("/api/interpret/upload?job_kind=brief", { method: "POST", body: form });
+    } else {
+      dualFile = await resolveDualFile(sessionId);
+      state.brief = null;
+      renderProgress(
+        { stage: "brief", job_kind: "brief", message: "使用当前会话提取概要…", progress_percent: 0 },
+        dualFile,
+      );
+      result = await api(`/api/interpret/sessions/${sessionId}/brief`, { method: "POST" });
+    }
+    await startBriefJob({ sessionId: result.session_id, jobId: result.job_id, dualFile });
+  } catch (err) {
+    setError(err.message || "概要提取失败");
+    console.error(err);
+  } finally {
+    briefBtn.disabled = false;
+    startBtn.disabled = false;
+    document.getElementById("file1-input").value = "";
+    document.getElementById("file2-input").value = "";
+  }
+});
+
 document.getElementById("start-btn").addEventListener("click", async () => {
   const file1 = document.getElementById("file1-input").files[0];
   const file2 = document.getElementById("file2-input").files[0];
-  if (!file1) {
-    setError("请选择文件 1");
+  const sessionId = state.sessionId || document.getElementById("interpret-session-select").value || null;
+  if (!file1 && !sessionId) {
+    setError("请选择文件，或在下拉框中选择已有会话");
     return;
   }
   const btn = document.getElementById("start-btn");
+  const briefBtn = document.getElementById("brief-btn");
   btn.disabled = true;
+  briefBtn.disabled = true;
   setError("", true);
   try {
-    const form = new FormData();
-    form.append("file1", file1);
-    if (file2) {
-      form.append("file2", file2);
+    let result;
+    let dualFile = false;
+    if (file1) {
+      const form = new FormData();
+      form.append("file1", file1);
+      if (file2) {
+        form.append("file2", file2);
+      }
+      dualFile = Boolean(file2);
+      state.pendingJobKind = "interpret";
+      renderProgress(
+        { stage: "pipeline_1", job_kind: "interpret", message: "上传完成，开始处理…", progress_percent: 0 },
+        dualFile,
+      );
+      result = await api("/api/interpret/upload", { method: "POST", body: form });
+    } else {
+      dualFile = await resolveDualFile(sessionId);
+      state.pendingJobKind = "interpret";
+      renderProgress(
+        { stage: "interpret", job_kind: "interpret", message: "使用当前会话开始解读…", progress_percent: 0 },
+        dualFile,
+      );
+      result = await api(`/api/interpret/sessions/${sessionId}/run`, { method: "POST" });
     }
-    const dualFile = Boolean(file2);
-    renderProgress({ stage: "pipeline_1", message: "上传完成，开始处理…", progress_percent: 0 }, dualFile);
-    const result = await api("/api/interpret/upload", { method: "POST", body: form });
-    state.sessionId = result.session_id;
-    state.result = null;
-    document.getElementById("overview-panel").hidden = true;
-    showResultPanel();
-    await refreshSessions();
-    await pollJob(result.job_id, dualFile);
+    await startInterpretJob({ sessionId: result.session_id, jobId: result.job_id, dualFile });
   } catch (err) {
     setError(err.message || "上传失败");
     console.error(err);
   } finally {
     btn.disabled = false;
+    briefBtn.disabled = false;
     document.getElementById("file1-input").value = "";
     document.getElementById("file2-input").value = "";
   }
@@ -577,18 +795,21 @@ document.getElementById("interpret-session-select").addEventListener("change", a
   }
   const session = await api(`/api/interpret/sessions/${sessionId}`);
   if (session.status === "success") {
-    await loadResult(sessionId);
+    await loadSessionData(sessionId);
   } else if (session.status === "running") {
     await resumeRunningSession(sessionId);
     if (!state.pollTimer) {
       state.result = null;
       document.getElementById("overview-panel").hidden = true;
+      await loadBrief(sessionId);
       await loadLlmCalls(sessionId);
       showResultPanel();
     }
   } else {
     state.result = null;
+    state.brief = null;
     document.getElementById("overview-panel").hidden = true;
+    await loadBrief(sessionId);
     await loadLlmCalls(sessionId);
     showResultPanel();
   }
@@ -610,6 +831,7 @@ document.getElementById("delete-interpret-session-btn").addEventListener("click"
     }
     state.sessionId = null;
     state.result = null;
+    state.brief = null;
     state.llmCalls = [];
     hideProgress();
     document.getElementById("result-panel").hidden = true;

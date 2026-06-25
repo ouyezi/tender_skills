@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from typing import Literal
+
 from viewer.models import InterpretJobState
 
 
@@ -9,12 +11,21 @@ class InterpretJobRegistry:
     def __init__(self) -> None:
         self._jobs: dict[str, InterpretJobState] = {}
 
-    def create(self, job_id: str, session_id: str, *, dual_file: bool = False) -> InterpretJobState:
+    def create(
+        self,
+        job_id: str,
+        session_id: str,
+        *,
+        dual_file: bool = False,
+        job_kind: Literal["interpret", "brief"] = "interpret",
+    ) -> InterpretJobState:
+        message = "准备提取招标概要" if job_kind == "brief" else "准备开始解读流水线"
         job = InterpretJobState(
             job_id=job_id,
             session_id=session_id,
+            job_kind=job_kind,
             stage="pipeline_1",
-            message="准备开始解读流水线",
+            message=message,
             status="running",
             error=None,
             progress_percent=0,

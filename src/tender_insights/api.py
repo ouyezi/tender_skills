@@ -8,6 +8,7 @@ from doc_chunk.llm.client import LLMClient
 from doc_chunk.llm.openai_client import create_llm_client_from_env
 from doc_chunk.workspace.layout import OutputWorkspace
 
+from tender_insights.brief.extractor import extract_brief_workspace
 from tender_insights.common.pipeline_runner import prepare_workspaces
 from tender_insights.common.workspace_resolver import resolve_workspace
 from tender_insights.interpret.extractor import interpret_workspace
@@ -64,6 +65,16 @@ def extract_templates(workspace: OutputWorkspace, *, client: LLMClient | None = 
 def review_legal(workspace: OutputWorkspace, *, client: LLMClient | None = None):
     client = client or create_llm_client_from_env()
     return review_legal_workspace(workspace, client)
+
+
+def extract_tender_brief(
+    workspace: OutputWorkspace,
+    *,
+    client: LLMClient | None = None,
+    on_progress: Callable[[str, dict], None] | None = None,
+):
+    client = client or create_llm_client_from_env()
+    return extract_brief_workspace(workspace, client, on_progress=on_progress)
 
 
 def render_interpretation_report(

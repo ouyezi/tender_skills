@@ -30,6 +30,8 @@ class InsightsConfig:
     ocr_logo_max_bytes: int = 10240
     ocr_logo_max_px: int = 128
     ocr_max_long_edge: int = 1500
+    brief_chunk_char_limit: int = 20000
+    brief_summary_max_chars: int = 500
 
     @classmethod
     def from_env(cls) -> InsightsConfig:
@@ -49,4 +51,6 @@ class InsightsConfig:
             ocr_logo_max_bytes=_env_int("OCR_LOGO_MAX_BYTES", 10240),
             ocr_logo_max_px=_env_int("OCR_LOGO_MAX_PX", 128),
             ocr_max_long_edge=_env_int("OCR_MAX_LONG_EDGE", 1500),
+            brief_chunk_char_limit=_env_int("BRIEF_CHUNK_CHAR_LIMIT", 20000),
+            brief_summary_max_chars=_env_int("BRIEF_SUMMARY_MAX_CHARS", 500),
         )

@@ -6,6 +6,7 @@ import typer
 
 from tender_insights.api import (
     extract_templates,
+    extract_tender_brief,
     interpret_document,
     prepare_workspaces,
     render_interpretation_report,
@@ -38,6 +39,19 @@ def interpret_cmd(
     ws = _resolve_workspaces(paths, output, overwrite)
     run_interpret_job(ws)
     typer.echo(f"Wrote {ws.root / 'interpretation.json'}")
+
+
+@app.command("brief")
+def brief_cmd(
+    paths: list[Path] = typer.Argument(..., help="工作区目录或原始文档（最多两个文件会自动合并）"),
+    output: Path | None = typer.Option(None, "-o", "--output"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """读取招标文件全文，生成标准化招标基础概要（≤500 字）。"""
+    ws = _resolve_workspaces(paths, output, overwrite)
+    extract_tender_brief(ws)
+    typer.echo(f"Wrote {ws.root / 'tender_brief.json'}")
+    typer.echo(f"Wrote {ws.root / 'tender_brief.txt'}")
 
 
 @app.command("template")

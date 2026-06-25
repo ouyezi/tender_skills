@@ -9,7 +9,7 @@ from doc_chunk.llm.client import LLMClient
 from doc_chunk.llm.openai_client import create_llm_client_from_env
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
-from tender_insights.api import prepare_workspaces, run_interpret_job
+from tender_insights.api import extract_tender_brief, prepare_workspaces, run_interpret_job
 from tender_insights.common.content_source import prepare_interpret_source
 from tender_insights.common.segment_planner import plan_segments
 from tender_insights.config import InsightsConfig
@@ -189,6 +189,298 @@ class InterpretPipelineService:
                 job_id,
                 stage="done",
                 message="解读完成",
+                status="done",
+                progress_percent=100,
+                step_current=step_total,
+                step_total=step_total,
+                detail="",
+                dual_file=dual_file,
+            )
+            session = self._sessions.update(session_id, status="success", error=None)
+            if self._viewer_sessions is not None:
+                from datetime import UTC, datetime
+
+                now = datetime.now(UTC).isoformat()
+                self._viewer_sessions.add(
+                    SessionRecord(
+                        id=session_id,
+                        title=session.title,
+                        workspace_path=str(workspace_dir),
+                        source_type="upload",
+                        status="success",
+                        created_at=session.created_at,
+                        opened_at=now,
+                        error=None,
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc)
+            self._jobs.update(
+                job_id,
+                stage="failed",
+                message=message,
+                status="failed",
+                error=message,
+                dual_file=dual_file,
+            )
+            self._sessions.update(session_id, status="failed", error=message)
+
+    async def run_brief_on_workspace(
+        self,
+        *,
+        job_id: str,
+        session_id: str,
+        workspace_dir: Path,
+        dual_file: bool = False,
+    ) -> None:
+        try:
+            step_total = 1
+            ws = OutputWorkspace.open_existing(workspace_dir)
+            self._report(
+                job_id,
+                stage="brief",
+                message="提取招标基础概要",
+                step_current=0,
+                step_total=step_total,
+                detail="",
+                dual_file=dual_file,
+            )
+            client = self._llm_client_factory()
+
+            def _brief_progress(_stage: str, payload: dict) -> None:
+                seg_current = int(payload.get("current", 0))
+                seg_total = int(payload.get("total", 1))
+                self._report(
+                    job_id,
+                    stage="brief",
+                    message=str(payload.get("message", "提取招标基础概要")),
+                    step_current=0 if seg_current == 0 else 1,
+                    step_total=step_total,
+                    segment_current=seg_current,
+                    segment_total=seg_total,
+                    detail=str(payload.get("detail", "")),
+                    dual_file=dual_file,
+                )
+
+            await asyncio.to_thread(
+                extract_tender_brief,
+                ws,
+                client=client,
+                on_progress=_brief_progress,
+            )
+            self._jobs.update(
+                job_id,
+                stage="done",
+                message="概要提取完成",
+                status="done",
+                progress_percent=100,
+                step_current=step_total,
+                step_total=step_total,
+                detail="",
+                dual_file=dual_file,
+            )
+            self._sessions.update(session_id, status="success", error=None)
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc)
+            self._jobs.update(
+                job_id,
+                stage="failed",
+                message=message,
+                status="failed",
+                error=message,
+                dual_file=dual_file,
+            )
+            self._sessions.update(session_id, status="failed", error=message)
+
+    async def run_interpret_on_workspace(
+        self,
+        *,
+        job_id: str,
+        session_id: str,
+        workspace_dir: Path,
+        dual_file: bool = False,
+    ) -> None:
+        try:
+            interpret_nodes = max(self._count_interpret_nodes(workspace_dir), 1)
+            step_total = interpret_nodes + 1
+            ws = OutputWorkspace.open_existing(workspace_dir)
+            self._report(
+                job_id,
+                stage="interpret",
+                message=f"开始解读，共 {interpret_nodes} 个分段",
+                step_current=0,
+                step_total=step_total,
+                detail="",
+                dual_file=dual_file,
+            )
+            client = self._llm_client_factory()
+            model_name = getattr(client, "model", None)
+            if model_name:
+                _LOGGER.info("interpret_llm_client model=%s", model_name)
+
+            def _interpret_progress(_stage: str, payload: dict) -> None:
+                seg_current = int(payload.get("current", 0))
+                seg_total = int(payload.get("total", 1))
+                step_current = seg_current
+                self._report(
+                    job_id,
+                    stage="interpret",
+                    message="解读招标",
+                    step_current=min(step_current, step_total - 1),
+                    step_total=step_total,
+                    segment_current=seg_current,
+                    segment_total=seg_total,
+                    detail=str(payload.get("detail", "")),
+                    dual_file=dual_file,
+                )
+
+            await asyncio.to_thread(
+                run_interpret_job,
+                ws,
+                client=client,
+                on_progress=_interpret_progress,
+                setup_logging=True,
+            )
+            self._jobs.update(
+                job_id,
+                stage="template",
+                message="提取模版",
+                step_current=step_total - 1,
+                step_total=step_total,
+                dual_file=dual_file,
+            )
+            self._jobs.update(
+                job_id,
+                stage="done",
+                message="解读完成",
+                status="done",
+                progress_percent=100,
+                step_current=step_total,
+                step_total=step_total,
+                detail="",
+                dual_file=dual_file,
+            )
+            session = self._sessions.update(session_id, status="success", error=None)
+            if self._viewer_sessions is not None:
+                from datetime import UTC, datetime
+
+                now = datetime.now(UTC).isoformat()
+                self._viewer_sessions.add(
+                    SessionRecord(
+                        id=session_id,
+                        title=session.title,
+                        workspace_path=str(workspace_dir),
+                        source_type="upload",
+                        status="success",
+                        created_at=session.created_at,
+                        opened_at=now,
+                        error=None,
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc)
+            self._jobs.update(
+                job_id,
+                stage="failed",
+                message=message,
+                status="failed",
+                error=message,
+                dual_file=dual_file,
+            )
+            self._sessions.update(session_id, status="failed", error=message)
+
+    async def run_brief_job(
+        self,
+        *,
+        job_id: str,
+        session_id: str,
+        input_paths: list[Path],
+        workspace_dir: Path,
+    ) -> None:
+        dual_file = len(input_paths) > 1
+        step = 0
+        try:
+            pipeline_steps = len(input_paths) * _PIPELINE_SUBSTEPS + (1 if dual_file else 0)
+            step_total = pipeline_steps + 1
+            self._report(
+                job_id,
+                stage="pipeline_1",
+                message="准备提取文件",
+                step_current=step,
+                step_total=step_total,
+                dual_file=dual_file,
+            )
+
+            def _pipeline_progress(substage: str, payload: dict) -> None:
+                nonlocal step
+                if substage == "merge":
+                    stage = "merge"
+                    file_label = "合并"
+                    sub_label = str(payload.get("message", "合并工作区"))
+                else:
+                    file_index = int(payload.get("file_index", 1))
+                    stage = "pipeline_1" if file_index == 1 else "pipeline_2"
+                    file_label = f"文件 {file_index}"
+                    sub_label = _STAGE_LABELS.get(substage, substage)
+                step += 1
+                self._report(
+                    job_id,
+                    stage=stage,
+                    message=f"{file_label}：{sub_label}",
+                    step_current=step,
+                    step_total=step_total,
+                    detail=str(payload.get("message", "")),
+                    dual_file=dual_file,
+                )
+
+            ws = await asyncio.to_thread(
+                prepare_workspaces,
+                input_paths,
+                output_dir=workspace_dir,
+                overwrite=True,
+                on_progress=_pipeline_progress,
+            )
+
+            brief_base = step
+            self._report(
+                job_id,
+                stage="brief",
+                message="提取招标基础概要",
+                step_current=brief_base,
+                step_total=step_total,
+                detail="",
+                dual_file=dual_file,
+            )
+
+            client = self._llm_client_factory()
+
+            def _brief_progress(_stage: str, payload: dict) -> None:
+                seg_current = int(payload.get("current", 0))
+                seg_total = int(payload.get("total", 1))
+                step_current = brief_base + (1 if seg_current > 0 else 0)
+                self._report(
+                    job_id,
+                    stage="brief",
+                    message=str(payload.get("message", "提取招标基础概要")),
+                    step_current=min(step_current, step_total - 1),
+                    step_total=step_total,
+                    segment_current=seg_current,
+                    segment_total=seg_total,
+                    detail=str(payload.get("detail", "")),
+                    dual_file=dual_file,
+                )
+
+            await asyncio.to_thread(
+                extract_tender_brief,
+                ws,
+                client=client,
+                on_progress=_brief_progress,
+            )
+
+            self._jobs.update(
+                job_id,
+                stage="done",
+                message="概要提取完成",
                 status="done",
                 progress_percent=100,
                 step_current=step_total,

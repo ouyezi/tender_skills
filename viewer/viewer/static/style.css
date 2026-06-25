@@ -513,6 +513,29 @@ button:hover {
   border-radius: 6px;
 }
 
+.brief-card .brief-summary-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.brief-field-list {
+  margin: 0.5rem 0 0;
+}
+
+.brief-field-list dt {
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.brief-field-list dd {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+}
+
+#brief-btn {
+  margin-right: 0.35rem;
+}
+
 .structure-tree {
   margin: 0.25rem 0 0.5rem 1rem;
   padding-left: 0.75rem;
