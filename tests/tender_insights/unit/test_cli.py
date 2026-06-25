@@ -13,6 +13,14 @@ def test_cli_help() -> None:
     assert result.exit_code == 0
     assert "render" in result.stdout
     assert "brief" in result.stdout
+    assert "gen-catalog" in result.stdout
+
+
+def test_cli_gen_catalog_help() -> None:
+    result = CliRunner().invoke(app, ["gen-catalog", "--help"])
+    assert result.exit_code == 0
+    assert "--step" in result.stdout
+    assert "--accept" in result.stdout
 
 
 def test_render_missing_interpretation_exits_1(tmp_path: Path) -> None:

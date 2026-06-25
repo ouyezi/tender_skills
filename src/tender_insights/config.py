@@ -32,6 +32,8 @@ class InsightsConfig:
     ocr_max_long_edge: int = 1500
     brief_chunk_char_limit: int = 20000
     brief_summary_max_chars: int = 500
+    gen_catalog_excerpt_max_chars: int = 2000
+    gen_catalog_excerpt_min_chars: int = 200
 
     @classmethod
     def from_env(cls) -> InsightsConfig:
@@ -53,4 +55,6 @@ class InsightsConfig:
             ocr_max_long_edge=_env_int("OCR_MAX_LONG_EDGE", 1500),
             brief_chunk_char_limit=_env_int("BRIEF_CHUNK_CHAR_LIMIT", 20000),
             brief_summary_max_chars=_env_int("BRIEF_SUMMARY_MAX_CHARS", 500),
+            gen_catalog_excerpt_max_chars=_env_int("GEN_CATALOG_EXCERPT_MAX_CHARS", 2000),
+            gen_catalog_excerpt_min_chars=_env_int("GEN_CATALOG_EXCERPT_MIN_CHARS", 200),
         )
