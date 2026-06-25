@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
@@ -32,32 +34,23 @@ def viewer_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def interpret_client(viewer_data_dir, monkeypatch):
     import json
 
-    from doc_chunk.llm.client import FakeLLMClient
     from fastapi.testclient import TestClient
 
-    from viewer.deps import get_interpret_pipeline_service, get_settings
+    from tests.helpers.interpret_fake_llm import InterpretFakeLLM
+    from viewer.deps import get_interpret_job_registry, get_interpret_pipeline_service, get_interpret_session_store, get_settings
     from viewer.main import create_app
     from viewer.services.interpret_job_registry import InterpretJobRegistry
     from viewer.services.interpret_pipeline import InterpretPipelineService
     from viewer.services.interpret_session_store import InterpretSessionStore
     from viewer.services.session_store import SessionStore
 
-    class _InterpretFakeLLM(FakeLLMClient):
-        def __init__(self, *, segment_json: str, overview_json: str) -> None:
-            super().__init__()
-            self._segment_json = segment_json
-            self._overview_json = overview_json
-
-        def complete(self, messages, *, response_format="text", timeout=60.0):
-            user_text = " ".join(
-                str(m.get("content", "")) for m in messages if m.get("role") == "user"
-            )
-            if "已提取明细" in user_text:
-                return self._overview_json
-            return self._segment_json
+    class _InterpretFakeLLM(InterpretFakeLLM):
+        pass
 
     get_settings.cache_clear()
     get_interpret_pipeline_service.cache_clear()
+    get_interpret_session_store.cache_clear()
+    get_interpret_job_registry.cache_clear()
 
     settings = get_settings()
     sessions = InterpretSessionStore(settings.interpret_sessions_file)
