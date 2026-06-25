@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from viewer.config import ViewerSettings
+from viewer.services.gen_catalog_pipeline import GenCatalogPipelineService
 from viewer.services.interpret_job_registry import InterpretJobRegistry
 from viewer.services.interpret_pipeline import InterpretPipelineService
 from viewer.services.interpret_session_store import InterpretSessionStore
@@ -41,6 +42,14 @@ def get_interpret_job_registry() -> InterpretJobRegistry:
 @lru_cache
 def get_pipeline_service() -> PipelineService:
     return PipelineService(sessions=get_session_store(), jobs=get_job_registry())
+
+
+@lru_cache
+def get_gen_catalog_pipeline_service() -> GenCatalogPipelineService:
+    return GenCatalogPipelineService(
+        sessions=get_interpret_session_store(),
+        jobs=get_interpret_job_registry(),
+    )
 
 
 @lru_cache

@@ -464,6 +464,11 @@ python -m pytest tests/tender_insights/ -v
 .venv/bin/tender-insights brief /path/to/bid.docx \
   -o ./output/my-bid \
   --overwrite
+
+# 投标目录方案：基于解读结果生成目录树（概要 + 撰写规范 + 废标/评分引用）
+.venv/bin/tender-insights gen-catalog ./output/my-bid --step --once
+.venv/bin/tender-insights gen-catalog ./output/my-bid --continue
+.venv/bin/tender-insights gen-catalog ./output/my-bid --accept
 ```
 
 ### 招标基础概要（`brief`）
@@ -505,6 +510,9 @@ export BRIEF_SUMMARY_MAX_CHARS=500     # 概要字数上限
 | `template` | `templates/index.json` + `templates/*.md` | 单独跑模版提取 |
 | `brief` | `tender_brief.json` | schema **1.0**：五类核心字段 + `summary_text` |
 | `brief` | `tender_brief.txt` | 纯文本概要（≤500 字，与 JSON 中 `summary_text` 一致） |
+| `gen-catalog` | `bid_outline.draft.json` | 投标目录方案预览（每步更新） |
+| `gen-catalog --accept` | `bid_outline.json` + `bid_outline.md` | 确认后的正式目录方案 |
+| `gen-catalog` | `gen_catalog/session.json` | 按步模式状态 |
 | `legal` | `legal_review.json` | `risk_items`（法务合规）+ `pending_confirmations` |
 
 工作区 `manifest.json` 会追加对应 `stages` 与 `outputs` 条目。

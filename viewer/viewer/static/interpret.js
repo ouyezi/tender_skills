@@ -590,6 +590,13 @@ async function loadResult(sessionId) {
     state.result = result;
     await loadLlmCalls(sessionId);
     renderOverview(result.interpretation?.overview);
+    const goBtn = document.getElementById("go-gen-catalog-btn");
+    if (goBtn) {
+      goBtn.hidden = false;
+      goBtn.onclick = () => {
+        window.location.href = `/gen-catalog?session_id=${encodeURIComponent(sessionId)}`;
+      };
+    }
     return true;
   } catch {
     state.result = null;
