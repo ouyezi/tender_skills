@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from viewer.services.workspace_merge import merge_workspaces, validate_merged_workspace
+from tender_insights.common.workspace_merge import merge_workspaces, validate_merged_workspace
 
 
 def _write_minimal_workspace(

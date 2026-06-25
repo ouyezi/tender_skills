@@ -424,13 +424,22 @@ python -m pytest tests/tender_insights/ -v
 
 ### 快速开始
 
-输入支持 **工作区目录** 或 **原始 `.docx`/`.pdf`**（后者自动调用 `doc-chunk pipeline`）。
+输入支持 **工作区目录** 或 **原始 `.docx`/`.pdf`**（后者自动调用 `doc-chunk pipeline`，参数 `skip_refine=True, skip_enrich=True`，与 Viewer 一致）。
 
 ```bash
-# 解读：废标项、得分项、投标风险、目录要求
+# 解读：废标项、得分项、投标风险、目录要求（单文件）
 .venv/bin/tender-insights interpret /path/to/bid.docx \
   -o ./output/my-bid \
   --overwrite
+
+# 双文件自动合并解读（如招标正文 + 技术规范）
+.venv/bin/tender-insights interpret /path/to/bid.docx /path/to/spec.docx \
+  -o ./output/my-bid \
+  --overwrite
+
+# 从 interpretation.json 生成 Markdown 报告
+.venv/bin/tender-insights render ./output/my-bid \
+  -o ./output/my-bid/interpret/interpret_report.md
 
 # 模版：承诺书、授权书、声明函等
 .venv/bin/tender-insights template ./output/my-bid
@@ -446,6 +455,7 @@ python -m pytest tests/tender_insights/ -v
 
 | 命令 | 产物 | 说明 |
 |------|------|------|
+| `interpret` | `interpret/interpret_report.md` | 可选：`tender-insights render` 生成的 Markdown 报告 |
 | `interpret` | `interpretation.json` | schema **1.1**：概要 `overview`、四类明细、`directory_outline` |
 | `interpret` | `interpret/source_content.md` | OCR enrichment 后正文（锚点基准；不覆盖 `content.md`） |
 | `interpret` | `interpret/ocr_cache.json` | 图片 SHA256 → OCR 文本缓存 |

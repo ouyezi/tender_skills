@@ -2,29 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from doc_chunk.api import run_pipeline
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.llm.openai_client import create_llm_client_from_env
-from doc_chunk.models.document import PipelineResult
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
-from tender_insights.api import extract_templates
+from tender_insights.api import prepare_workspaces, run_interpret_job
 from tender_insights.common.content_source import prepare_interpret_source
 from tender_insights.common.segment_planner import plan_segments
 from tender_insights.config import InsightsConfig
-from tender_insights.interpret.extractor import interpret_workspace
-from tender_insights.interpret.llm_logging import LLM_CALLS_FILENAME
 
 from viewer.models import SessionRecord
 from viewer.services.interpret_job_registry import InterpretJobRegistry
 from viewer.services.interpret_session_store import InterpretSessionStore
 from viewer.services.session_store import SessionStore
-from viewer.services.workspace_merge import merge_workspaces, validate_merged_workspace
 
 _PIPELINE_SUBSTEPS = 4
 _LOGGER = logging.getLogger("viewer.interpret")
@@ -45,13 +38,11 @@ class InterpretPipelineService:
         sessions: InterpretSessionStore,
         jobs: InterpretJobRegistry,
         viewer_sessions: SessionStore | None = None,
-        run_pipeline_fn: Callable[..., PipelineResult] = run_pipeline,
         llm_client_factory: Callable[[], LLMClient] | None = None,
     ) -> None:
         self._sessions = sessions
         self._jobs = jobs
         self._viewer_sessions = viewer_sessions
-        self._run_pipeline = run_pipeline_fn
         self._llm_client_factory = llm_client_factory or create_llm_client_from_env
 
     def _count_interpret_nodes(self, workspace_dir: Path) -> int:
@@ -98,12 +89,11 @@ class InterpretPipelineService:
         input_paths: list[Path],
         workspace_dir: Path,
     ) -> None:
-        temp_dirs: list[Path] = []
         dual_file = len(input_paths) > 1
         step = 0
         try:
             pipeline_steps = len(input_paths) * _PIPELINE_SUBSTEPS + (1 if dual_file else 0)
-            step_total = pipeline_steps + 2  # interpret placeholder + template; refined after pipeline
+            step_total = pipeline_steps + 2
             self._report(
                 job_id,
                 stage="pipeline_1",
@@ -113,66 +103,38 @@ class InterpretPipelineService:
                 dual_file=dual_file,
             )
 
-            for idx, input_path in enumerate(input_paths, start=1):
-                stage = "pipeline_1" if idx == 1 else "pipeline_2"
-                file_label = f"文件 {idx}"
-
-                def _progress(substage: str, payload: dict) -> None:
-                    nonlocal step
-                    step += 1
+            def _pipeline_progress(substage: str, payload: dict) -> None:
+                nonlocal step
+                if substage == "merge":
+                    stage = "merge"
+                    file_label = "合并"
+                    sub_label = str(payload.get("message", "合并工作区"))
+                else:
+                    file_index = int(payload.get("file_index", 1))
+                    stage = "pipeline_1" if file_index == 1 else "pipeline_2"
+                    file_label = f"文件 {file_index}"
                     sub_label = _STAGE_LABELS.get(substage, substage)
-                    self._report(
-                        job_id,
-                        stage=stage,
-                        message=f"{file_label}：{sub_label}",
-                        step_current=step,
-                        step_total=step_total,
-                        detail=str(payload.get("message", "")),
-                        dual_file=dual_file,
-                    )
-
-                temp = workspace_dir.parent / f"{session_id}_tmp{idx}"
-                temp_dirs.append(temp)
-                result = await asyncio.to_thread(
-                    self._run_pipeline,
-                    input_path,
-                    temp,
-                    overwrite=True,
-                    skip_refine=True,
-                    skip_enrich=True,
-                    on_progress=_progress,
-                )
-                if result.status == "failed":
-                    error = result.errors[0]["error"] if result.errors else "pipeline failed"
-                    raise RuntimeError(error)
-
-            if len(input_paths) == 1:
-                if workspace_dir.exists():
-                    shutil.rmtree(workspace_dir)
-                shutil.copytree(temp_dirs[0], workspace_dir)
-            else:
                 step += 1
                 self._report(
                     job_id,
-                    stage="merge",
-                    message="合并工作区",
+                    stage=stage,
+                    message=f"{file_label}：{sub_label}",
                     step_current=step,
                     step_total=step_total,
+                    detail=str(payload.get("message", "")),
                     dual_file=dual_file,
                 )
-                if workspace_dir.exists():
-                    shutil.rmtree(workspace_dir)
-                merge_workspaces(
-                    workspace_dir,
-                    sources=[
-                        (temp_dirs[0], input_paths[0].name),
-                        (temp_dirs[1], input_paths[1].name),
-                    ],
-                )
-                validate_merged_workspace(workspace_dir)
+
+            ws = await asyncio.to_thread(
+                prepare_workspaces,
+                input_paths,
+                output_dir=workspace_dir,
+                overwrite=True,
+                on_progress=_pipeline_progress,
+            )
 
             interpret_nodes = max(self._count_interpret_nodes(workspace_dir), 1)
-            step_total = pipeline_steps + interpret_nodes + 1  # +1 template
+            step_total = pipeline_steps + interpret_nodes + 1
             interpret_base = step
             self._report(
                 job_id,
@@ -184,15 +146,10 @@ class InterpretPipelineService:
                 dual_file=dual_file,
             )
 
-            ws = OutputWorkspace.open_existing(workspace_dir)
             client = self._llm_client_factory()
             model_name = getattr(client, "model", None)
             if model_name:
                 _LOGGER.info("interpret_llm_client model=%s", model_name)
-
-            llm_log_path = workspace_dir / LLM_CALLS_FILENAME
-            llm_log_path.unlink(missing_ok=True)
-            os.environ["INTERPRET_LOG_JSONL"] = str(llm_log_path)
 
             def _interpret_progress(_stage: str, payload: dict) -> None:
                 seg_current = int(payload.get("current", 0))
@@ -211,10 +168,11 @@ class InterpretPipelineService:
                 )
 
             await asyncio.to_thread(
-                interpret_workspace,
+                run_interpret_job,
                 ws,
-                client,
+                client=client,
                 on_progress=_interpret_progress,
+                setup_logging=True,
             )
 
             step = step_total - 1
@@ -226,7 +184,6 @@ class InterpretPipelineService:
                 step_total=step_total,
                 dual_file=dual_file,
             )
-            await asyncio.to_thread(extract_templates, ws, client=client)
 
             self._jobs.update(
                 job_id,
@@ -267,6 +224,3 @@ class InterpretPipelineService:
                 dual_file=dual_file,
             )
             self._sessions.update(session_id, status="failed", error=message)
-        finally:
-            for temp in temp_dirs:
-                shutil.rmtree(temp, ignore_errors=True)

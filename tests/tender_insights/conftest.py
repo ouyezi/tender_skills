@@ -5,6 +5,10 @@ from pathlib import Path
 import pytest
 from docx import Document
 
+from tests.helpers.interpret_fake_llm import InterpretFakeLLM
+
+__all__ = ["InterpretFakeLLM"]
+
 
 @pytest.fixture
 def sample_docx(tmp_path: Path) -> Path:

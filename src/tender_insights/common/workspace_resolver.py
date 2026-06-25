@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from doc_chunk.api import run_pipeline
 from doc_chunk.workspace.layout import OutputWorkspace
 
+from tender_insights.common.pipeline_runner import prepare_workspaces
 from tender_insights.errors import WorkspaceResolveError
 
 
@@ -28,8 +28,4 @@ def resolve_workspace(
     if output_dir is None:
         raise WorkspaceResolveError("output_dir is required when input is a raw document file")
 
-    out = Path(output_dir)
-    result = run_pipeline(path, out, overwrite=overwrite, skip_refine=True, skip_enrich=False)
-    if result.status not in {"success", "partial"}:
-        raise WorkspaceResolveError(f"doc_chunk pipeline failed: {result.status}")
-    return OutputWorkspace.open_existing(out)
+    return prepare_workspaces([path], output_dir=output_dir, overwrite=overwrite)
