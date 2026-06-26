@@ -159,12 +159,46 @@ def _start_session_interpret_job(session_id: str, background_tasks: BackgroundTa
     return InterpretUploadResponse(session_id=session_id, job_id=job_id)
 
 
+def _start_session_template_job(session_id: str, background_tasks: BackgroundTasks) -> InterpretUploadResponse:
+    settings = get_settings()
+    session = _get_session_or_404(session_id)
+    _ensure_session_idle(session)
+    workspace_dir = Path(session.workspace_path)
+    dual_file = len(session.source_files) > 1
+    job_id = str(uuid.uuid4())
+    _mark_session_running(session_id)
+    get_interpret_job_registry().create(job_id, session_id, dual_file=dual_file, job_kind="template")
+    service = get_interpret_pipeline_service()
+    if _workspace_is_ready(workspace_dir):
+        background_tasks.add_task(
+            service.run_template_on_workspace,
+            job_id=job_id,
+            session_id=session_id,
+            workspace_dir=workspace_dir,
+            dual_file=dual_file,
+        )
+    else:
+        try:
+            input_paths = resolve_interpret_input_paths(session, settings)
+        except FileNotFoundError as exc:
+            get_interpret_session_store().update(session_id, status="failed", error=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        background_tasks.add_task(
+            service.run_template_job,
+            job_id=job_id,
+            session_id=session_id,
+            input_paths=input_paths,
+            workspace_dir=workspace_dir,
+        )
+    return InterpretUploadResponse(session_id=session_id, job_id=job_id)
+
+
 async def _enqueue_upload_job(
     background_tasks: BackgroundTasks,
     *,
     file1: UploadFile,
     file2: UploadFile | None,
-    job_kind: Literal["interpret", "brief"],
+    job_kind: Literal["interpret", "brief", "template"],
 ) -> InterpretUploadResponse:
     settings = get_settings()
     session_id = str(uuid.uuid4())
@@ -212,6 +246,14 @@ async def _enqueue_upload_job(
             input_paths=input_paths,
             workspace_dir=workspace_dir,
         )
+    elif job_kind == "template":
+        background_tasks.add_task(
+            service.run_template_job,
+            job_id=job_id,
+            session_id=session_id,
+            input_paths=input_paths,
+            workspace_dir=workspace_dir,
+        )
     else:
         background_tasks.add_task(
             service.run_job,
@@ -228,7 +270,7 @@ async def upload_interpret(
     background_tasks: BackgroundTasks,
     file1: UploadFile = File(...),
     file2: UploadFile | None = File(None),
-    job_kind: Literal["interpret", "brief"] = Query(default="interpret"),
+    job_kind: Literal["interpret", "brief", "template"] = Query(default="interpret"),
 ) -> InterpretUploadResponse:
     return await _enqueue_upload_job(background_tasks, file1=file1, file2=file2, job_kind=job_kind)
 
@@ -247,6 +289,12 @@ async def upload_brief(
 def run_brief_on_session(session_id: str, background_tasks: BackgroundTasks) -> InterpretUploadResponse:
     """对已选会话重跑概要：工作区就绪则跳过 pipeline，否则从已上传原文件重建。"""
     return _start_session_brief_job(session_id, background_tasks)
+
+
+@router.post("/sessions/{session_id}/template", response_model=InterpretUploadResponse)
+def run_template_on_session(session_id: str, background_tasks: BackgroundTasks) -> InterpretUploadResponse:
+    """对已选会话重跑模版提取：工作区就绪则跳过 pipeline，否则从已上传原文件重建。"""
+    return _start_session_template_job(session_id, background_tasks)
 
 
 @router.post("/sessions/{session_id}/run", response_model=InterpretUploadResponse)

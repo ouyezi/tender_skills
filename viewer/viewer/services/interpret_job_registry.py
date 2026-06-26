@@ -17,15 +17,22 @@ class InterpretJobRegistry:
         session_id: str,
         *,
         dual_file: bool = False,
-        job_kind: Literal["interpret", "brief", "gen_catalog"] = "interpret",
+        job_kind: Literal["interpret", "brief", "template", "gen_catalog"] = "interpret",
     ) -> InterpretJobState:
         if job_kind == "brief":
             message = "准备提取招标概要"
+        elif job_kind == "template":
+            message = "准备提取模版"
         elif job_kind == "gen_catalog":
             message = "准备生成投标目录"
         else:
             message = "准备开始解读流水线"
-        stage = "gen_catalog" if job_kind == "gen_catalog" else "pipeline_1"
+        if job_kind == "gen_catalog":
+            stage = "gen_catalog"
+        elif job_kind == "template":
+            stage = "template_plan"
+        else:
+            stage = "pipeline_1"
         job = InterpretJobState(
             job_id=job_id,
             session_id=session_id,

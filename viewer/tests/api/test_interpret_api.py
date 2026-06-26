@@ -139,3 +139,38 @@ def test_run_brief_on_missing_session_returns_404(viewer_data_dir) -> None:
     client = TestClient(create_app())
     response = client.post("/api/interpret/sessions/missing-id/brief")
     assert response.status_code == 404
+
+
+def test_run_template_on_existing_session(viewer_data_dir, pipeline_workspace: Path) -> None:
+    from datetime import UTC, datetime
+
+    from viewer.deps import get_interpret_session_store, get_settings
+
+    client = TestClient(create_app())
+    settings = get_settings()
+    store = get_interpret_session_store()
+    session_id = "template-rerun"
+    workspace = settings.workspaces_dir / session_id
+    import shutil
+
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    shutil.copytree(pipeline_workspace, workspace)
+    now = datetime.now(UTC).isoformat()
+    store.add(
+        InterpretSessionRecord(
+            id=session_id,
+            title="demo.docx",
+            workspace_path=str(workspace),
+            source_files=["demo.docx"],
+            status="success",
+            created_at=now,
+            opened_at=now,
+        )
+    )
+
+    response = client.post(f"/api/interpret/sessions/{session_id}/template")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"] == session_id
+    assert "job_id" in body
