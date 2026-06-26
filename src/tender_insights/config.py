@@ -35,6 +35,10 @@ class InsightsConfig:
     brief_ocr_enabled: bool = False
     gen_catalog_excerpt_max_chars: int = 2000
     gen_catalog_excerpt_min_chars: int = 200
+    template_whole_doc_max_chars: int = 80000
+    template_shard_max_chars: int = 24000
+    template_char_chunk_overlap: int = 500
+    template_plan_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> InsightsConfig:
@@ -59,4 +63,8 @@ class InsightsConfig:
             brief_ocr_enabled=_env_bool("BRIEF_OCR_ENABLED", False),
             gen_catalog_excerpt_max_chars=_env_int("GEN_CATALOG_EXCERPT_MAX_CHARS", 2000),
             gen_catalog_excerpt_min_chars=_env_int("GEN_CATALOG_EXCERPT_MIN_CHARS", 200),
+            template_whole_doc_max_chars=_env_int("TEMPLATE_WHOLE_DOC_MAX_CHARS", 80000),
+            template_shard_max_chars=_env_int("TEMPLATE_SHARD_MAX_CHARS", 24000),
+            template_char_chunk_overlap=_env_int("TEMPLATE_CHAR_CHUNK_OVERLAP", 500),
+            template_plan_enabled=_env_bool("TEMPLATE_PLAN_ENABLED", True),
         )
