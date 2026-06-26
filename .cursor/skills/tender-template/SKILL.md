@@ -25,16 +25,43 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-模版分类可能调用 LLM（规则优先）。建议配置（默认千问）：
+模版提取依赖 LLM 分片规划与逐片识别。建议配置（默认千问）：
 
 ```bash
 export LLM_PROVIDER=qwen
 export LLM_API_KEY=sk-...
 export LLM_BASE_URL=
-export LLM_MODEL=qwen3.6-plus
+export LLM_MODEL=qwen3.7-max
 ```
 
-> **`--no-llm` 说明**：CLI 无 `--no-llm`。测试请用 Python API + `FakeLLMClient` 注入。**生产环境勿跳过 LLM**（若 classifier 走 LLM 兜底）。
+模版分片与规划专用配置（见 `.env.example`）：
+
+```bash
+export TEMPLATE_WHOLE_DOC_MAX_CHARS=80000   # 低于此值整篇一片
+export TEMPLATE_SHARD_MAX_CHARS=24000       # 单片上限
+export TEMPLATE_CHAR_CHUNK_OVERLAP=500      # 字符块切分重叠
+export TEMPLATE_PLAN_ENABLED=true           # false 时跳过 LLM plan，仅保留确定性分片
+```
+
+> **生产环境勿跳过 LLM**。测试请用 Python API + `TemplateFakeLLM` 注入，勿依赖旧关键词检测器。
+
+## 提取流水线（LLM v1.1）
+
+```
+outline.json + content.md
+    ↓
+[sharder] 确定性分片（outline L1 → 子节点 → heading → char）
+    ↓
+[planner] 可选 LLM plan → templates/plan.json
+    ↓
+[extractor] 逐片 LLM 识别 → 全局 char_start/char_end
+    ↓
+[slicer] 机械切片 → templates/*.md
+    ↓
+[merger] 去重 → templates/index.json (schema v1.1)
+```
+
+**旧 `detector.py` 关键词匹配已废弃**，仅保留于单元测试；生产路径统一走上述 LLM pipeline。
 
 ## 命令示例
 
@@ -56,7 +83,8 @@ export LLM_MODEL=qwen3.6-plus
 
 ```text
 {workspace}/templates/
-├── index.json              # 模版索引（TemplatesIndexFile schema）
+├── plan.json               # 分片计划（TemplatePlanFile schema）
+├── index.json              # 模版索引（TemplatesIndexFile schema v1.1）
 ├── commitment-001.md       # 承诺书正文
 ├── authorization-001.md    # 授权书正文
 └── ...
@@ -70,9 +98,20 @@ export LLM_MODEL=qwen3.6-plus
 
 | 字段 | 说明 |
 |------|------|
-| `schema_version` | 固定 `"1.0"` |
+| `schema_version` | `"1.1"` |
 | `analyzed_at` | ISO8601 |
+| `plan_ref` | 固定 `"templates/plan.json"` |
+| `shard_count` | 分片总数 |
 | `templates[]` | 模版条目列表 |
+
+### `templates/plan.json`
+
+| 字段 | 说明 |
+|------|------|
+| `shard_count` | 分片数 |
+| `shards[]` | 每片 `shard_id`、`strategy`、`section_path`、`char_start`/`char_end` |
+| `llm_notes` | LLM plan 补充说明（可选） |
+| `priority_sections` | LLM 标注的高优先级章节（可选） |
 
 ### `templates[]` 每条
 
@@ -84,8 +123,10 @@ export LLM_MODEL=qwen3.6-plus
 | `title` | 模版标题 |
 | `section_path` | 章节路径 |
 | `file` | 相对工作区的 Markdown 路径，如 `templates/commitment-001.md` |
-| `char_start` / `char_end` | content.md 锚点 |
+| `char_start` / `char_end` | content.md 全局锚点 |
 | `confidence` | 0–1 |
+| `extraction_method` | `llm` |
+| `shard_id` | 来源分片 ID（可选） |
 
 ### 模版类型
 
@@ -100,12 +141,30 @@ export LLM_MODEL=qwen3.6-plus
 
 ```python
 from pathlib import Path
-from tender_insights.api import resolve_workspace_path, extract_templates
+from tender_insights.api import resolve_workspace_path, run_template_job, extract_templates
 
 ws = resolve_workspace_path(Path("./output/my-bid"))
+
+# 推荐：带进度回调与 llm_calls.jsonl 日志
+index = run_template_job(ws, on_progress=lambda stage, payload: print(stage, payload))
+
+# 兼容别名（内部同样走 LLM pipeline）
 index = extract_templates(ws)
-# index.templates[0].file → "templates/commitment-001.md"
+# index.templates[0].file → "templates/authorization-001.md"
 ```
+
+进度阶段：`template_plan` → `template_extract` → `template_merge`。
+
+## Viewer
+
+解读页（`interpret.html`）提供独立 **「提取模版」** 按钮（`#template-btn`）：
+
+- 上传新文件：`POST /api/interpret/upload?job_kind=template`
+- 已有会话：`POST /api/interpret/sessions/{id}/template`
+
+进度条展示 `template_plan` / `template_extract` / `template_merge` 阶段；完成后自动切换到「模版」Tab。
+
+「开始解读」流程末尾也会自动调用 `run_template_job`（`include_template=True`）。
 
 ## 相关 skills
 

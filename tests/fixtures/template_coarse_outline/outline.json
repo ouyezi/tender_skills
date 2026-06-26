@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "strategy": "heading_heuristic",
+  "nodes": [
+    {
+      "node_id": "n1",
+      "title": "第一章 招标公告",
+      "level": 1,
+      "parent_id": null,
+      "sort_order": 0,
+      "anchor": {
+        "char_start": 0
+      },
+      "needs_review": false,
+      "source_refs": []
+    },
+    {
+      "node_id": "n2",
+      "title": "第二章 投标人须知",
+      "level": 1,
+      "parent_id": null,
+      "sort_order": 1,
+      "anchor": {
+        "char_start": 36
+      },
+      "needs_review": false,
+      "source_refs": []
+    },
+    {
+      "node_id": "n3",
+      "title": "第三章 评标办法",
+      "level": 1,
+      "parent_id": null,
+      "sort_order": 2,
+      "anchor": {
+        "char_start": 68
+      },
+      "needs_review": false,
+      "source_refs": []
+    },
+    {
+      "node_id": "n4",
+      "title": "第四章 投标文件格式",
+      "level": 1,
+      "parent_id": null,
+      "sort_order": 3,
+      "anchor": {
+        "char_start": 99
+      },
+      "needs_review": false,
+      "source_refs": []
+    },
+    {
+      "node_id": "n5",
+      "title": "第五章 合同条款",
+      "level": 1,
+      "parent_id": null,
+      "sort_order": 4,
+      "anchor": {
+        "char_start": 509
+      },
+      "needs_review": false,
+      "source_refs": []
+    },
+    {
+      "node_id": "n6",
+      "title": "第六章 附件",
+      "level": 1,
+      "parent_id": null,
+      "sort_order": 5,
+      "anchor": {
+        "char_start": 539
+      },
+      "needs_review": false,
+      "source_refs": []
+    }
+  ],
+  "derived_from": null,
+  "accepted_at": null
+}
