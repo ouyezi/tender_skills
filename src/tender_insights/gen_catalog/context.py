@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 
-from tender_insights.gen_catalog.models import BidOutlineFile, BidOutlineNode
+from tender_insights.brief.models import TenderBriefFile
+from tender_insights.gen_catalog.models import BidOutlineNode
 from tender_insights.gen_catalog.prerequisites import PrerequisiteReport
 
 
@@ -67,48 +68,81 @@ def build_initial_user_prompt(report: PrerequisiteReport) -> str:
     return "\n\n".join(parts)
 
 
-def build_refine_user_prompt(
-    report: PrerequisiteReport,
-    *,
-    draft: BidOutlineFile,
-    target_node_id: str,
+def build_node_shared_user_prefix(
+    brief: TenderBriefFile | None,
+    root: BidOutlineNode,
     excerpt: str,
 ) -> str:
-    interp = report.interpretation
-    target = _find_node_title(draft.root, target_node_id)
-    parts = [
-        "## 废标项（id 表）",
-        _item_table(interp.disqualification_items, fields=["id", "title", "summary", "trigger_condition"]),
-        "## 评分项（id 表）",
-        _item_table(
-            interp.scoring_items,
-            fields=["id", "title", "summary", "max_score", "weight", "criteria"],
-        ),
-        "## 当前完整目录树",
-        json.dumps(draft.root.model_dump(), ensure_ascii=False, indent=2),
-        f"## 目标节点\ntarget_node_id: {target_node_id}\ntitle: {target}",
-        "## 招标文件相关摘录",
-        excerpt,
-    ]
-    if report.templates is not None:
+    parts: list[str] = []
+    if brief is not None:
         parts.extend(
             [
-                "## 模板清单",
+                "## 招标概要（tender_brief）",
                 json.dumps(
-                    [t.model_dump() for t in report.templates.templates],
+                    {
+                        "summary_text": brief.summary_text,
+                        "fields": brief.fields.model_dump(),
+                    },
                     ensure_ascii=False,
                     indent=2,
                 ),
             ]
         )
+    parts.extend(
+        [
+            "## 当前完整目录树",
+            json.dumps(root.model_dump(), ensure_ascii=False, indent=2),
+            "## 招标文件相关摘录",
+            excerpt,
+        ]
+    )
     return "\n\n".join(parts)
 
 
-def _find_node_title(root: BidOutlineNode, node_id: str) -> str:
-    if root.id == node_id:
-        return root.title
-    for child in root.children:
-        title = _find_node_title(child, node_id)
-        if title:
-            return title
-    return ""
+def build_node_plan_task_suffix() -> str:
+    return """## 任务：目录优化评估
+
+分析「招标文件相关摘录」是否要求对「当前完整目录树」进行优化或细化。
+
+只输出 JSON：
+{"needs_optimization": <bool>, "refinement_plan": "<方案说明>"}
+
+- needs_optimization=false：无需改动，refinement_plan 简述原因
+- needs_optimization=true：refinement_plan 描述具体动作（合并、拆分、补充子节等）
+- 禁止输出 outline 字段"""
+
+
+def build_node_apply_task_suffix(refinement_plan: str) -> str:
+    return f"""## 优化或细化方案
+{refinement_plan}
+
+## 任务：执行目录更新
+
+根据上述方案更新完整目录树。
+
+只输出 JSON：
+{{"outline": <BidOutlineNode>, "changes_summary": "<本步调整说明>"}}
+
+- outline 为完整树，根 id=bid-root，已有 bid-NNN id 保持不变
+- 仅执行方案中描述的调整，不超出方案范围"""
+
+
+def build_node_plan_user_prompt(
+    brief: TenderBriefFile | None,
+    root: BidOutlineNode,
+    excerpt: str,
+) -> str:
+    return build_node_shared_user_prefix(brief, root, excerpt) + "\n\n" + build_node_plan_task_suffix()
+
+
+def build_node_apply_user_prompt(
+    brief: TenderBriefFile | None,
+    root: BidOutlineNode,
+    excerpt: str,
+    refinement_plan: str,
+) -> str:
+    return (
+        build_node_shared_user_prefix(brief, root, excerpt)
+        + "\n\n"
+        + build_node_apply_task_suffix(refinement_plan)
+    )

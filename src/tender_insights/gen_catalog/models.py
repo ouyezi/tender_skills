@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TemplateRef(BaseModel):
@@ -51,9 +51,26 @@ class BidOutlineFile(BaseModel):
     root: BidOutlineNode
 
 
+class BidOutlinePlanLLMResponse(BaseModel):
+    needs_optimization: bool
+    refinement_plan: str = ""
+
+    @model_validator(mode="after")
+    def refinement_plan_required_when_optimizing(self) -> BidOutlinePlanLLMResponse:
+        if self.needs_optimization and not self.refinement_plan.strip():
+            raise ValueError("refinement_plan required when needs_optimization is true")
+        return self
+
+
 class BidOutlineLLMResponse(BaseModel):
     outline: BidOutlineNode
     changes_summary: str = ""
+
+    @model_validator(mode="after")
+    def outline_root_is_bid_root(self) -> BidOutlineLLMResponse:
+        if self.outline.id != "bid-root":
+            raise ValueError("outline root id must be bid-root")
+        return self
 
 
 class GenCatalogSession(BaseModel):
@@ -65,6 +82,7 @@ class GenCatalogSession(BaseModel):
     current_node_title: str | None = None
     node_queue: list[str] = Field(default_factory=list)
     completed_steps: list[str] = Field(default_factory=list)
+    last_plan: dict | None = None
     job_id: str | None = None
     error: str | None = None
     updated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())

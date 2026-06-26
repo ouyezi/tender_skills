@@ -106,6 +106,16 @@ function formatLlmCallLabel(call) {
   if (type === "gen_catalog_initial") {
     return "初始目录生成";
   }
+  if (type === "gen_catalog_node_plan") {
+    const seg = call.segment_id || "";
+    const title = call.section_path?.[0] || findNodeTitle(state.draft?.root, seg) || "";
+    return title ? `分析优化点「${title}」` : "分析优化点";
+  }
+  if (type === "gen_catalog_node_apply") {
+    const seg = call.segment_id || "";
+    const title = call.section_path?.[0] || findNodeTitle(state.draft?.root, seg) || "";
+    return title ? `执行优化「${title}」` : "执行优化";
+  }
   if (type === "gen_catalog_node") {
     const seg = call.segment_id || "";
     const title = call.section_path?.[0] || findNodeTitle(state.draft?.root, seg) || "";
@@ -189,13 +199,25 @@ async function loadLlmCalls() {
   }
 }
 
+function formatLlmCallSubtitle(call) {
+  const type = call.call_type || "";
+  const seg = call.segment_id || "";
+  if (type === "gen_catalog_node_plan") {
+    return seg ? `分析优化点 · ${seg}` : "分析优化点";
+  }
+  if (type === "gen_catalog_node_apply") {
+    return seg ? `执行优化 · ${seg}` : "执行优化";
+  }
+  return type;
+}
+
 function renderLlmCalls() {
   const container = document.getElementById("llm-calls-list");
   window.LlmCallsUi.syncLlmCallCards(container, state.llmCalls, {
     emptyHint: "暂无 LLM 调用记录",
     renderCard: (call) => {
       const title = formatLlmCallLabel(call);
-      const subtitle = call.call_type || "";
+      const subtitle = formatLlmCallSubtitle(call);
       return window.LlmCallCard.buildLlmCallCard(call, { title, subtitle });
     },
   });

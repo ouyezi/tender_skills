@@ -27,3 +27,11 @@ def test_gen_catalog_js_has_session_selector() -> None:
     assert "refreshSessions" in js
     assert "gen-catalog-session-select" in js
     assert "LlmCallsUi.syncLlmCallCards" in js
+
+
+def test_gen_catalog_js_labels_plan_apply() -> None:
+    js = (Path(__file__).resolve().parents[2] / "viewer/static/gen-catalog.js").read_text(encoding="utf-8")
+    assert "gen_catalog_node_plan" in js
+    assert "gen_catalog_node_apply" in js
+    assert "分析优化点" in js
+    assert "执行优化" in js

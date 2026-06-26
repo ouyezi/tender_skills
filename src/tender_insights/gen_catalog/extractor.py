@@ -11,11 +11,21 @@ from doc_chunk.workspace.layout import OutputWorkspace
 
 from tender_insights.common.llm_extractor import extract_json_model
 from tender_insights.config import InsightsConfig
-from tender_insights.gen_catalog.context import build_initial_user_prompt, build_refine_user_prompt
+from tender_insights.gen_catalog.context import (
+    build_initial_user_prompt,
+    build_node_apply_user_prompt,
+    build_node_plan_user_prompt,
+)
 from tender_insights.gen_catalog.excerpt import pick_node_excerpt
-from tender_insights.gen_catalog.models import BidOutlineFile, BidOutlineLLMResponse, BidOutlineNode, GenCatalogSession
+from tender_insights.gen_catalog.models import (
+    BidOutlineFile,
+    BidOutlineLLMResponse,
+    BidOutlineNode,
+    BidOutlinePlanLLMResponse,
+    GenCatalogSession,
+)
 from tender_insights.gen_catalog.prerequisites import PrerequisiteReport, validate_prerequisites
-from tender_insights.gen_catalog.prompts import GEN_CATALOG_INITIAL_SYSTEM, GEN_CATALOG_REFINE_SYSTEM
+from tender_insights.gen_catalog.prompts import GEN_CATALOG_INITIAL_SYSTEM, GEN_CATALOG_NODE_SYSTEM
 from tender_insights.gen_catalog.normalize import normalize_outline_ids
 from tender_insights.gen_catalog.queue import (
     build_refine_queue,
@@ -137,6 +147,81 @@ def run_gen_catalog_initial(
     return draft
 
 
+    save_session(workspace, session)
+    return draft
+
+
+def run_gen_catalog_node_plan(
+    workspace: OutputWorkspace,
+    client: LLMClient,
+    *,
+    report: PrerequisiteReport,
+    draft: BidOutlineFile,
+    node_id: str,
+    excerpt: str,
+    title: str,
+    config: InsightsConfig | None = None,
+) -> BidOutlinePlanLLMResponse:
+    config = config or InsightsConfig.from_env()
+    user_content = build_node_plan_user_prompt(report.brief, draft.root, excerpt)
+    messages = [
+        {"role": "system", "content": GEN_CATALOG_NODE_SYSTEM},
+        {"role": "user", "content": user_content},
+    ]
+    log_llm_prompt(
+        call_type="gen_catalog_node_plan",
+        messages=messages,
+        workspace=str(workspace.root),
+        segment_id=node_id,
+        section_path=[title],
+    )
+    return extract_json_model(
+        client,
+        messages,
+        BidOutlinePlanLLMResponse,
+        max_retries=config.max_retries,
+        log_context={"call_type": "gen_catalog_node_plan", "segment_id": node_id},
+    )
+
+
+def run_gen_catalog_node_apply(
+    workspace: OutputWorkspace,
+    client: LLMClient,
+    *,
+    report: PrerequisiteReport,
+    draft: BidOutlineFile,
+    node_id: str,
+    excerpt: str,
+    title: str,
+    refinement_plan: str,
+    config: InsightsConfig | None = None,
+) -> BidOutlineLLMResponse:
+    config = config or InsightsConfig.from_env()
+    user_content = build_node_apply_user_prompt(
+        report.brief, draft.root, excerpt, refinement_plan
+    )
+    messages = [
+        {"role": "system", "content": GEN_CATALOG_NODE_SYSTEM},
+        {"role": "user", "content": user_content},
+    ]
+    log_llm_prompt(
+        call_type="gen_catalog_node_apply",
+        messages=messages,
+        workspace=str(workspace.root),
+        segment_id=node_id,
+        section_path=[title],
+    )
+    response = extract_json_model(
+        client,
+        messages,
+        BidOutlineLLMResponse,
+        max_retries=config.max_retries,
+        log_context={"call_type": "gen_catalog_node_apply", "segment_id": node_id},
+    )
+    normalize_outline_ids(response.outline)
+    return response
+
+
 def run_gen_catalog_node(
     workspace: OutputWorkspace,
     client: LLMClient,
@@ -156,43 +241,49 @@ def run_gen_catalog_node(
         max_chars=config.gen_catalog_excerpt_max_chars,
         min_chars=config.gen_catalog_excerpt_min_chars,
     )
-    user_content = build_refine_user_prompt(
-        report,
-        draft=draft,
-        target_node_id=node_id,
-        excerpt=excerpt,
-    )
-    messages = [
-        {"role": "system", "content": GEN_CATALOG_REFINE_SYSTEM},
-        {"role": "user", "content": user_content},
-    ]
-    log_llm_prompt(
-        call_type="gen_catalog_node",
-        messages=messages,
-        workspace=str(workspace.root),
-        segment_id=node_id,
-        section_path=[title],
-    )
-    response = extract_json_model(
+
+    plan = run_gen_catalog_node_plan(
+        workspace,
         client,
-        messages,
-        BidOutlineLLMResponse,
-        max_retries=config.max_retries,
-        log_context={"call_type": "gen_catalog_node", "segment_id": node_id},
+        report=report,
+        draft=draft,
+        node_id=node_id,
+        excerpt=excerpt,
+        title=title,
+        config=config,
     )
-    draft = _build_draft_shell(
-        report,
-        response.outline,
-        mode=session.mode,
-        status=draft.status,
-        step_index=session.step_index + 1,
-        step_total=session.step_total,
-    )
-    save_draft(workspace, draft)
-    session.step_index += 1
-    session.completed_steps.append(node_id)
+    session.last_plan = {
+        "node_id": node_id,
+        "needs_optimization": plan.needs_optimization,
+        "refinement_plan": plan.refinement_plan,
+    }
     session.current_node_id = node_id
     session.current_node_title = title
+
+    if plan.needs_optimization:
+        response = run_gen_catalog_node_apply(
+            workspace,
+            client,
+            report=report,
+            draft=draft,
+            node_id=node_id,
+            excerpt=excerpt,
+            title=title,
+            refinement_plan=plan.refinement_plan,
+            config=config,
+        )
+        draft = _build_draft_shell(
+            report,
+            response.outline,
+            mode=session.mode,
+            status=draft.status,
+            step_index=session.step_index + 1,
+            step_total=session.step_total,
+        )
+        save_draft(workspace, draft)
+
+    session.step_index += 1
+    session.completed_steps.append(node_id)
     save_session(workspace, session)
     return draft
 

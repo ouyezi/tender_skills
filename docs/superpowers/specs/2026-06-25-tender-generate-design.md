@@ -154,10 +154,9 @@ Step 0: gen_catalog_initial (LLM)
     → [mode=step] 暂停
     ↓
 Step 1…N: for each node in preorder(node_queue):
-    gen_catalog_node (LLM)
-    → 输入：固定 GEN_CATALOG_REFINE_SYSTEM + 当前完整目录树 + 目标节点
-           + 节点相关招标摘录（≤2000 字）+ 关联废标/评分条目
-    → 输出：完整 BidOutline（替换整棵树）→ 更新 draft
+    gen_catalog_node_plan (LLM) → {needs_optimization, refinement_plan}
+    if needs_optimization:
+        gen_catalog_node_apply (LLM) → 完整 BidOutline（替换整棵树）→ 更新 draft
     → [mode=step] 暂停
     ↓
 status = awaiting_accept
@@ -165,7 +164,9 @@ status = awaiting_accept
 用户 accept → bid_outline.json + bid_outline.md
 ```
 
-**关键约束**：Step 0 与每个 Step N 的 LLM 响应均为**整棵目录树替换**，不使用 patch、不做末次合并。
+> **2026-06-26 更新：** 节点完善步已升级为 Plan → 条件 Apply 两步流程，详见 `docs/superpowers/specs/2026-06-26-gen-catalog-node-refine-design.md`。
+
+**关键约束**：Step 0 与 Apply 步的 LLM 响应为**整棵目录树替换**；Plan 步仅输出评估 JSON，不返回 outline。
 
 ### 4.3 节点队列
 
@@ -193,7 +194,7 @@ status = awaiting_accept
 | 阶段 | call_type | System（固定，最前） | User（动态） |
 |------|-----------|---------------------|--------------|
 | 初始生成 | `gen_catalog_initial` | `GEN_CATALOG_INITIAL_SYSTEM`：角色、输出 JSON schema、废标/评分对齐规则、撰写规范要求 | 解读 overview、brief、tender_brief 五字段、directory_requirements 树、废标/评分明细摘要、模板清单 |
-| 节点完善 | `gen_catalog_node` | `GEN_CATALOG_REFINE_SYSTEM`：在保持整体结构前提下完善单节点、返回**完整树**、引用 id 规则 | 当前完整目录 JSON、目标 `node_id`、节点相关摘录、关联废标/评分全文 |
+| 节点完善 | `gen_catalog_node_plan` / `gen_catalog_node_apply` | `GEN_CATALOG_NODE_SYSTEM`（Plan/Apply 共用） | Plan：招标概要 + 目录树 + 摘录；Apply：同上 + 优化方案 |
 
 ### 5.2 缓存策略
 

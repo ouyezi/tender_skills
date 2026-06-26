@@ -15,7 +15,7 @@ from tender_insights.gen_catalog.queue import build_node_queue, build_refine_que
 from tender_insights.gen_catalog.render import render_bid_outline_markdown
 from tender_insights.gen_catalog.session import clear_gen_catalog_artifacts, load_session, save_session
 from tender_insights.gen_catalog.normalize import normalize_outline_ids
-from tender_insights.gen_catalog.prompts import GEN_CATALOG_INITIAL_SYSTEM, GEN_CATALOG_REFINE_SYSTEM
+from tender_insights.gen_catalog.prompts import GEN_CATALOG_INITIAL_SYSTEM
 from tender_insights.gen_catalog.context import build_initial_user_prompt
 from tender_insights.interpret.models import (
     DirectoryOutline,
@@ -177,8 +177,12 @@ def test_session_roundtrip(tmp_path: Path) -> None:
 
 
 def test_prompts_are_static() -> None:
+    from tender_insights.gen_catalog.prompts import GEN_CATALOG_INITIAL_SYSTEM, GEN_CATALOG_NODE_SYSTEM
+
     assert "JSON" in GEN_CATALOG_INITIAL_SYSTEM
-    assert "完整" in GEN_CATALOG_REFINE_SYSTEM
+    assert "bid-root" in GEN_CATALOG_NODE_SYSTEM
+    assert "needs_optimization" not in GEN_CATALOG_NODE_SYSTEM
+    assert "refinement_plan" not in GEN_CATALOG_NODE_SYSTEM
 
 
 def test_build_initial_user_prompt_includes_overview(tmp_path: Path) -> None:
@@ -222,6 +226,77 @@ def test_accept_writes_final_artifacts(tmp_path: Path) -> None:
     assert (ws.root / "bid_outline.md").is_file()
     text = (ws.root / "bid_outline.md").read_text(encoding="utf-8")
     assert "投标函" in text
+
+
+def test_bid_outline_plan_requires_refinement_plan_when_optimizing() -> None:
+    from pydantic import ValidationError
+
+    from tender_insights.gen_catalog.models import BidOutlinePlanLLMResponse
+
+    BidOutlinePlanLLMResponse(needs_optimization=False, refinement_plan="无需调整")
+    with pytest.raises(ValidationError):
+        BidOutlinePlanLLMResponse(needs_optimization=True, refinement_plan="")
+
+
+def test_gen_catalog_session_last_plan_roundtrip(tmp_path: Path) -> None:
+    ws = _open_ws(_minimal_interpretation(tmp_path))
+    session = GenCatalogSession(
+        mode="step",
+        status="paused",
+        last_plan={"node_id": "bid-001", "needs_optimization": False, "refinement_plan": "ok"},
+    )
+    save_session(ws, session)
+    loaded = load_session(ws)
+    assert loaded.last_plan is not None
+    assert loaded.last_plan["node_id"] == "bid-001"
+
+
+def _write_brief(ws_root: Path) -> None:
+    from tender_insights.brief.models import TenderBriefFields, TenderBriefFile
+
+    brief = TenderBriefFile(
+        source_workspace=str(ws_root),
+        summary_text="招标概要",
+        fields=TenderBriefFields(
+            issuer_company="甲",
+            procurement_subject="标的",
+            budget_info="预算",
+            qualification_requirements="资质",
+            key_timelines="工期",
+        ),
+    )
+    (ws_root / "tender_brief.json").write_text(brief.model_dump_json(), encoding="utf-8")
+
+
+def test_gen_catalog_node_skips_apply_when_no_optimization(tmp_path: Path) -> None:
+    ws_root = _minimal_interpretation(tmp_path)
+    _write_brief(ws_root)
+    ws = _open_ws(ws_root)
+    client = GenCatalogFakeLLM()
+    gen_catalog_workspace(ws, client, mode="step", run_limit=2)
+    session = load_session(ws)
+    assert "bid-001" in session.completed_steps
+    assert session.last_plan is not None
+    assert session.last_plan["needs_optimization"] is False
+    plan_calls = [c for c in client.calls if "目录优化评估" in str(c["messages"])]
+    apply_calls = [c for c in client.calls if "执行目录更新" in str(c["messages"])]
+    assert len(plan_calls) >= 1
+    assert len(apply_calls) == 0
+
+
+def test_gen_catalog_node_apply_updates_tree(tmp_path: Path) -> None:
+    ws_root = _minimal_interpretation(tmp_path)
+    _write_brief(ws_root)
+    ws = _open_ws(ws_root)
+    client = GenCatalogFakeLLM()
+    result = gen_catalog_workspace(ws, client, mode="auto")
+    assert result.status == "awaiting_accept"
+    tech = next(c for c in result.root.children if c.id == "bid-002")
+    assert "得分点" in tech.writing_spec
+    plan_calls = sum(1 for c in client.calls if "目录优化评估" in str(c["messages"]))
+    apply_calls = sum(1 for c in client.calls if "执行目录更新" in str(c["messages"]))
+    assert plan_calls == 2
+    assert apply_calls == 1
 
 
 def test_render_bid_outline_markdown() -> None:

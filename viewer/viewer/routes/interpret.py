@@ -351,6 +351,42 @@ def delete_interpret_session(session_id: str) -> dict:
     return {"deleted": True}
 
 
+def _llm_call_merge_key(record: dict, *, fallback_index: int) -> str:
+    call_type = record.get("call_type") or ""
+    segment_id = record.get("segment_id")
+    if call_type and segment_id:
+        return f"{call_type}:{segment_id}"
+    if segment_id:
+        return str(segment_id)
+    if call_type:
+        return call_type
+    return f"call-{fallback_index}"
+
+
+def _resolve_llm_call_key(
+    record: dict,
+    *,
+    merged: dict[str, dict],
+    order: list[str],
+    fallback_index: int,
+) -> str:
+    direct = _llm_call_merge_key(record, fallback_index=fallback_index)
+    if record.get("event") not in {"attempt", "response"}:
+        return direct
+    if record.get("call_type"):
+        return direct
+    segment_id = record.get("segment_id")
+    if not segment_id:
+        return direct
+    if segment_id in merged:
+        return segment_id
+    suffix = f":{segment_id}"
+    for key in reversed(order):
+        if key.endswith(suffix):
+            return key
+    return str(segment_id)
+
+
 def _read_llm_calls(workspace: Path) -> list[dict]:
     path = workspace / "llm_calls.jsonl"
     if not path.exists():
@@ -363,7 +399,7 @@ def _read_llm_calls(workspace: Path) -> list[dict]:
         if not stripped:
             continue
         record = json.loads(stripped)
-        key = record.get("segment_id") or record.get("call_type") or f"call-{len(order)}"
+        key = _resolve_llm_call_key(record, merged=merged, order=order, fallback_index=len(order))
         event = record.get("event")
         if event == "response":
             if key in merged:
