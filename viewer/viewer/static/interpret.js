@@ -11,6 +11,7 @@ const state = {
 
 const STAGES = ["pipeline_1", "pipeline_2", "merge", "interpret", "template"];
 const BRIEF_STAGES = ["pipeline_1", "pipeline_2", "merge", "brief"];
+const TEMPLATE_STAGES = ["pipeline_1", "pipeline_2", "merge", "template_plan", "template_extract", "template_merge"];
 const STAGE_LABELS = {
   pipeline_1: "提取文件 1",
   pipeline_2: "提取文件 2",
@@ -18,6 +19,9 @@ const STAGE_LABELS = {
   brief: "提取概要",
   interpret: "解读招标",
   template: "提取模版",
+  template_plan: "规划模版分片",
+  template_extract: "提取模版",
+  template_merge: "合并模版",
 };
 
 const BRIEF_FIELD_LABELS = [
@@ -57,7 +61,12 @@ function setError(message, hidden = false) {
 
 function visibleStages(job, dualFile) {
   const kind = job?.job_kind || state.pendingJobKind || "interpret";
-  const base = kind === "brief" ? BRIEF_STAGES : STAGES;
+  let base = STAGES;
+  if (kind === "brief") {
+    base = BRIEF_STAGES;
+  } else if (kind === "template") {
+    base = TEMPLATE_STAGES;
+  }
   return dualFile ? base : base.filter((s) => s !== "pipeline_2" && s !== "merge");
 }
 
@@ -93,6 +102,12 @@ function renderProgress(job, dualFile) {
       segTotal > 0 ? `概要分片 (${segCurrent}/${segTotal})` : job?.message || "提取招标基础概要";
     document.getElementById("interpret-progress-label").textContent = segText;
     detailEl.textContent = job?.detail || "";
+  } else if (stage.startsWith("template")) {
+    document.getElementById("interpret-progress-label").textContent =
+      job?.message || STAGE_LABELS[stage] || "提取模版";
+    const detail = job?.detail || "";
+    const stepText = job?.step_total ? `（${job.step_current}/${job.step_total}）` : "";
+    detailEl.textContent = `${detail}${stepText ? ` ${stepText}` : ""}`.trim();
   } else {
     document.getElementById("interpret-progress-label").textContent =
       job?.message || STAGE_LABELS[stage] || "处理中…";
@@ -151,7 +166,9 @@ async function pollJob(jobId, dualFile) {
         const job = await api(`/api/interpret/jobs/${jobId}`);
         if (job.status === "running") {
           renderProgress(job, dualFile);
-          if (job.stage === "interpret" || job.stage === "template" || job.stage === "brief") {
+          const templateActive =
+            job.job_kind === "template" || (job.stage && job.stage.startsWith("template"));
+          if (job.stage === "interpret" || job.stage === "brief" || templateActive) {
             await refreshLlmCalls(job.session_id, { render: state.activeTab === "llm" });
           }
         }
@@ -164,6 +181,10 @@ async function pollJob(jobId, dualFile) {
           if (job.job_kind === "brief") {
             await loadBrief(job.session_id);
             maybeSetActiveTab("brief");
+            initResultPanel();
+          } else if (job.job_kind === "template") {
+            await loadSessionData(job.session_id);
+            maybeSetActiveTab("templates");
             initResultPanel();
           } else {
             await loadSessionData(job.session_id);
@@ -588,11 +609,24 @@ async function enterRunningSession(sessionId, jobId, dualFile, jobKind = "interp
   if (jobKind !== "brief") {
     document.getElementById("overview-panel").hidden = true;
   }
+  if (jobKind === "template") {
+    resetActiveTab("templates");
+  }
   initResultPanel();
   if (jobKind !== "brief") {
     await refreshLlmCalls(sessionId, { render: state.activeTab === "llm" });
   }
   await pollJob(jobId, dualFile);
+}
+
+function setJobButtonsDisabled(disabled) {
+  document.getElementById("brief-btn").disabled = disabled;
+  document.getElementById("template-btn").disabled = disabled;
+  document.getElementById("start-btn").disabled = disabled;
+}
+
+function hideProgress() {
+  document.getElementById("interpret-progress").hidden = true;
 }
 
 async function openSourcePanel(sessionId, nodeId) {
@@ -639,6 +673,16 @@ async function startBriefJob({ sessionId, jobId, dualFile }) {
   await pollJob(jobId, dualFile);
 }
 
+async function startTemplateJob({ sessionId, jobId, dualFile }) {
+  state.sessionId = sessionId;
+  state.pendingJobKind = "template";
+  resetActiveTab("templates");
+  initResultPanel();
+  await refreshSessions();
+  document.getElementById("interpret-session-select").value = sessionId;
+  await pollJob(jobId, dualFile);
+}
+
 async function startInterpretJob({ sessionId, jobId, dualFile }) {
   state.sessionId = sessionId;
   state.pendingJobKind = "interpret";
@@ -659,10 +703,7 @@ document.getElementById("brief-btn").addEventListener("click", async () => {
     setError("请选择文件，或在下拉框中选择已有会话");
     return;
   }
-  const briefBtn = document.getElementById("brief-btn");
-  const startBtn = document.getElementById("start-btn");
-  briefBtn.disabled = true;
-  startBtn.disabled = true;
+  setJobButtonsDisabled(true);
   setError("", true);
   try {
     let result;
@@ -695,8 +736,52 @@ document.getElementById("brief-btn").addEventListener("click", async () => {
     setError(err.message || "概要提取失败");
     console.error(err);
   } finally {
-    briefBtn.disabled = false;
-    startBtn.disabled = false;
+    setJobButtonsDisabled(false);
+    document.getElementById("file1-input").value = "";
+    document.getElementById("file2-input").value = "";
+  }
+});
+
+document.getElementById("template-btn").addEventListener("click", async () => {
+  const file1 = document.getElementById("file1-input").files[0];
+  const file2 = document.getElementById("file2-input").files[0];
+  const sessionId = state.sessionId || document.getElementById("interpret-session-select").value || null;
+  if (!file1 && !sessionId) {
+    setError("请选择文件，或在下拉框中选择已有会话");
+    return;
+  }
+  setJobButtonsDisabled(true);
+  setError("", true);
+  try {
+    let result;
+    let dualFile = false;
+    if (file1) {
+      const form = new FormData();
+      form.append("file1", file1);
+      if (file2) {
+        form.append("file2", file2);
+      }
+      dualFile = Boolean(file2);
+      state.result = null;
+      renderProgress(
+        { stage: "pipeline_1", job_kind: "template", message: "上传完成，开始提取模版…", progress_percent: 0 },
+        dualFile,
+      );
+      result = await api("/api/interpret/upload?job_kind=template", { method: "POST", body: form });
+    } else {
+      dualFile = await resolveDualFile(sessionId);
+      renderProgress(
+        { stage: "template_plan", job_kind: "template", message: "使用当前会话提取模版…", progress_percent: 0 },
+        dualFile,
+      );
+      result = await api(`/api/interpret/sessions/${sessionId}/template`, { method: "POST" });
+    }
+    await startTemplateJob({ sessionId: result.session_id, jobId: result.job_id, dualFile });
+  } catch (err) {
+    setError(err.message || "模版提取失败");
+    console.error(err);
+  } finally {
+    setJobButtonsDisabled(false);
     document.getElementById("file1-input").value = "";
     document.getElementById("file2-input").value = "";
   }
@@ -710,10 +795,7 @@ document.getElementById("start-btn").addEventListener("click", async () => {
     setError("请选择文件，或在下拉框中选择已有会话");
     return;
   }
-  const btn = document.getElementById("start-btn");
-  const briefBtn = document.getElementById("brief-btn");
-  btn.disabled = true;
-  briefBtn.disabled = true;
+  setJobButtonsDisabled(true);
   setError("", true);
   try {
     let result;
@@ -745,8 +827,7 @@ document.getElementById("start-btn").addEventListener("click", async () => {
     setError(err.message || "上传失败");
     console.error(err);
   } finally {
-    btn.disabled = false;
-    briefBtn.disabled = false;
+    setJobButtonsDisabled(false);
     document.getElementById("file1-input").value = "";
     document.getElementById("file2-input").value = "";
   }

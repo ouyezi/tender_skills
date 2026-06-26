@@ -67,3 +67,20 @@ def test_interpret_js_has_brief_tab() -> None:
     assert 'key: "brief"' in js
     assert "renderBrief" in js
     assert "upload?job_kind=brief" in js
+
+
+def test_interpret_html_has_template_button() -> None:
+    html = (STATIC / "interpret.html").read_text(encoding="utf-8")
+    assert 'id="template-btn"' in html
+    assert "提取模版" in html
+
+
+def test_interpret_js_has_template_job() -> None:
+    js = (STATIC / "interpret.js").read_text(encoding="utf-8")
+    assert "template_plan" in js
+    assert "template_extract" in js
+    assert "template_merge" in js
+    assert "upload?job_kind=template" in js
+    assert "/template" in js
+    assert "startTemplateJob" in js
+    assert "TEMPLATE_STAGES" in js
