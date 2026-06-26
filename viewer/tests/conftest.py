@@ -36,6 +36,9 @@ def interpret_client(viewer_data_dir, monkeypatch):
 
     from fastapi.testclient import TestClient
 
+    monkeypatch.setenv("OCR_ENABLED", "false")
+    monkeypatch.setenv("TEMPLATE_PLAN_ENABLED", "false")
+
     from tests.helpers.interpret_fake_llm import InterpretFakeLLM
     from viewer.deps import get_interpret_job_registry, get_interpret_pipeline_service, get_interpret_session_store, get_settings
     from viewer.main import create_app
@@ -83,7 +86,26 @@ def interpret_client(viewer_data_dir, monkeypatch):
             "directory_summary": "目录",
         }
     )
-    fake = _InterpretFakeLLM(segment_json=segment_json, overview_json=overview_json)
+    extract_json = json.dumps(
+        {
+            "templates": [
+                {
+                    "title": "授权书",
+                    "type": "authorization",
+                    "type_label": "授权书",
+                    "char_start": 0,
+                    "char_end": 50,
+                    "confidence": 0.9,
+                    "source_excerpt": "授权",
+                }
+            ]
+        }
+    )
+    fake = _InterpretFakeLLM(
+        segment_json=segment_json,
+        overview_json=overview_json,
+        extract_json=extract_json,
+    )
 
     def factory():
         return InterpretPipelineService(
