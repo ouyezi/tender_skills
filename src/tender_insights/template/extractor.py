@@ -1,90 +1,200 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
+
 from doc_chunk.llm.client import LLMClient
-from doc_chunk.models.content_block import ContentBlocksFile
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
+from doc_chunk.workspace.manifest_io import load_manifest, save_manifest
 
+from tender_insights.common.llm_extractor import extract_json_model
 from tender_insights.common.output_writer import write_json_artifact
-from tender_insights.common.section_slice import load_content_blocks, slice_for_llm
-from tender_insights.template.boundary import slice_by_heading_level
-from tender_insights.template.classifier import classify_template
-from tender_insights.template.detector import detect_template_nodes
-from tender_insights.template.models import TemplateEntry, TemplatesIndexFile
+from tender_insights.common.section_slice import slice_for_llm
+from tender_insights.config import InsightsConfig
+from tender_insights.errors import LLMExtractionError
+from tender_insights.interpret.llm_logging import log_llm_prompt
+from tender_insights.template.merger import dedupe_template_hits
+from tender_insights.template.models import (
+    TemplateEntry,
+    TemplateExtractResponse,
+    TemplateHitLLM,
+    TemplatePlanFile,
+    TemplateShard,
+    TemplatesIndexFile,
+)
+from tender_insights.template.planner import (
+    _read_manifest_title,
+    build_deterministic_plan,
+    run_template_plan_llm,
+    write_plan_json,
+)
+from tender_insights.template.prompts import TEMPLATE_EXTRACT_SYSTEM, build_extract_user_prompt
+from tender_insights.template.slicer import slice_template_hit
+
+logger = logging.getLogger(__name__)
 
 
-def _section_path(node_id: str, outline: OutlineTree) -> list[str]:
-    node_map = {n.node_id: n for n in outline.nodes}
-    chain: list[str] = []
-    cur = node_map.get(node_id)
-    while cur:
-        chain.append(cur.title)
-        cur = node_map.get(cur.parent_id) if cur.parent_id else None
-    return list(reversed(chain))
+def _progress(
+    on_progress: Callable[[str, dict], None] | None,
+    stage: str,
+    payload: dict,
+) -> None:
+    if on_progress is None:
+        return
+    try:
+        on_progress(stage, payload)
+    except Exception:
+        return
 
 
-def _slice_node_markdown(
+def _append_manifest_warning(workspace: OutputWorkspace, warning: str) -> None:
+    if not workspace.manifest_path.exists():
+        return
+    manifest = load_manifest(workspace.manifest_path)
+    if warning not in manifest.warnings:
+        manifest.warnings.append(warning)
+    save_manifest(workspace, manifest)
+
+
+def _find_shard_for_hit(plan: TemplatePlanFile, char_start: int) -> TemplateShard | None:
+    for shard in plan.shards:
+        if shard.char_start <= char_start < shard.char_end:
+            return shard
+    return None
+
+
+def _materialize_templates(
     workspace: OutputWorkspace,
     content_md: str,
-    outline: OutlineTree,
-    node_id: str,
-    *,
-    blocks: ContentBlocksFile | None = None,
-) -> tuple[str, int, int]:
-    node = next(n for n in outline.nodes if n.node_id == node_id)
-    start = node.anchor.char_start if node.anchor and node.anchor.char_start is not None else 0
-    siblings = sorted(
-        [n for n in outline.nodes if n.level == node.level and (n.anchor.char_start or 0) > start],
-        key=lambda n: n.anchor.char_start or 10**9,
-    )
-    sibling_end = siblings[0].anchor.char_start if siblings and siblings[0].anchor else len(content_md)
-    md, heading_end = slice_by_heading_level(content_md, start, node.level)
-    char_end = heading_end if md else sibling_end
-    llm_md = slice_for_llm(workspace, content_md, start, char_end, blocks=blocks).strip()
-    return llm_md, start, char_end
+    hits: list[TemplateHitLLM],
+    plan: TemplatePlanFile,
+) -> tuple[list[TemplateEntry], list[str]]:
+    templates_dir = workspace.root / "templates"
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    type_counters: dict[str, int] = {}
+    entries: list[TemplateEntry] = []
+    warnings: list[str] = []
+
+    for idx, hit in enumerate(hits, start=1):
+        sliced = slice_template_hit(workspace, content_md, hit)
+        if sliced is None:
+            msg = f"invalid char range for template: {hit.title}"
+            warnings.append(msg)
+            logger.warning(
+                "template hit out of range: %s [%s, %s)",
+                hit.title,
+                hit.char_start,
+                hit.char_end,
+            )
+            continue
+        md, char_start, char_end = sliced
+        type_counters[hit.type] = type_counters.get(hit.type, 0) + 1
+        filename = f"{hit.type}-{type_counters[hit.type]:03d}.md"
+        rel_path = f"templates/{filename}"
+        (templates_dir / filename).write_text(md, encoding="utf-8")
+        shard = _find_shard_for_hit(plan, char_start)
+        entries.append(
+            TemplateEntry(
+                id=f"tpl-{idx:03d}",
+                type=hit.type,
+                type_label=hit.type_label,
+                title=hit.title,
+                section_path=shard.section_path if shard else [],
+                file=rel_path,
+                char_start=char_start,
+                char_end=char_end,
+                confidence=hit.confidence,
+                extraction_method="llm",
+                shard_id=shard.shard_id if shard else None,
+            )
+        )
+    return entries, warnings
 
 
 def extract_templates_workspace(
     workspace: OutputWorkspace,
     client: LLMClient,
+    *,
+    config: InsightsConfig | None = None,
+    on_progress: Callable[[str, dict], None] | None = None,
 ) -> TemplatesIndexFile:
-    del client  # rule-based classifier; client reserved for future LLM fallback
-    outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
+    config = config or InsightsConfig.from_env()
     content_md = workspace.content_path.read_text(encoding="utf-8")
-    blocks = load_content_blocks(workspace)
+    outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
+    doc_title = _read_manifest_title(workspace)
 
     templates_dir = workspace.root / "templates"
     templates_dir.mkdir(parents=True, exist_ok=True)
 
-    type_counters: dict[str, int] = {}
-    entries: list[TemplateEntry] = []
+    plan = build_deterministic_plan(content_md, outline, config)
+    if config.template_plan_enabled:
+        plan = run_template_plan_llm(workspace, client, plan, doc_title, config)
+    write_plan_json(workspace, plan)
 
-    for idx, hit in enumerate(detect_template_nodes(outline), start=1):
-        md, char_start, char_end = _slice_node_markdown(
-            workspace, content_md, outline, hit.node_id, blocks=blocks
+    total_steps = plan.shard_count + 2
+    _progress(
+        on_progress,
+        "template_plan",
+        {"current": 0, "total": total_steps, "shard_count": plan.shard_count},
+    )
+
+    all_hits: list[TemplateHitLLM] = []
+    for i, shard in enumerate(plan.shards, start=1):
+        _progress(
+            on_progress,
+            "template_extract",
+            {
+                "current": i,
+                "total": total_steps,
+                "shard_id": shard.shard_id,
+                "detail": " > ".join(shard.section_path),
+            },
         )
-        tpl_type, type_label, confidence = classify_template(hit.title, md)
-
-        type_counters[tpl_type] = type_counters.get(tpl_type, 0) + 1
-        filename = f"{tpl_type}-{type_counters[tpl_type]:03d}.md"
-        rel_path = f"templates/{filename}"
-        (templates_dir / filename).write_text(md, encoding="utf-8")
-
-        entries.append(
-            TemplateEntry(
-                id=f"tpl-{idx:03d}",
-                type=tpl_type,
-                type_label=type_label,
-                title=hit.title,
-                section_path=_section_path(hit.node_id, outline),
-                file=rel_path,
-                char_start=char_start,
-                char_end=char_end,
-                confidence=confidence,
+        shard_md = slice_for_llm(workspace, content_md, shard.char_start, shard.char_end)
+        messages = [
+            {"role": "system", "content": TEMPLATE_EXTRACT_SYSTEM},
+            {
+                "role": "user",
+                "content": build_extract_user_prompt(shard=shard, shard_markdown=shard_md),
+            },
+        ]
+        log_llm_prompt(
+            call_type="template_extract",
+            messages=messages,
+            workspace=str(workspace.root),
+            segment_id=shard.shard_id,
+            section_path=shard.section_path,
+        )
+        try:
+            batch = extract_json_model(
+                client,
+                messages,
+                TemplateExtractResponse,
+                max_retries=config.max_retries,
+                log_context={
+                    "call_type": "template_extract",
+                    "segment_id": shard.shard_id,
+                },
             )
-        )
+            all_hits.extend(batch.templates)
+        except LLMExtractionError:
+            logger.warning("template extract failed for %s", shard.shard_id)
 
-    result = TemplatesIndexFile(templates=entries)
+    _progress(
+        on_progress,
+        "template_merge",
+        {"current": total_steps - 1, "total": total_steps},
+    )
+    merged = dedupe_template_hits(all_hits)
+    entries, _warnings = _materialize_templates(workspace, content_md, merged, plan)
+
+    result = TemplatesIndexFile(
+        schema_version="1.1",
+        templates=entries,
+        plan_ref="templates/plan.json",
+        shard_count=plan.shard_count,
+    )
     write_json_artifact(
         workspace,
         "templates/index.json",
@@ -92,4 +202,6 @@ def extract_templates_workspace(
         stage_name="template",
         output_key="templates",
     )
+    if not entries:
+        _append_manifest_warning(workspace, "no templates identified")
     return result
