@@ -32,6 +32,11 @@ def default_llm_timeout() -> float:
     return float(raw)
 
 
+def thinking_enabled() -> bool:
+    """Qwen hybrid models (3.5+) enable thinking by default on DashScope."""
+    return _env_bool("LLM_ENABLE_THINKING", False)
+
+
 def log_stream_chunk(text: str) -> None:
     if not text:
         return

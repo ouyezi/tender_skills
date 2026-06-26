@@ -5,6 +5,8 @@ from pathlib import Path
 import typer
 
 from tender_insights.api import (
+    accept_gen_catalog,
+    continue_gen_catalog,
     extract_templates,
     extract_tender_brief,
     interpret_document,
@@ -12,6 +14,7 @@ from tender_insights.api import (
     render_interpretation_report,
     resolve_workspace_path,
     review_legal,
+    run_gen_catalog_job,
     run_interpret_job,
 )
 from tender_insights.errors import WorkspaceResolveError
@@ -87,6 +90,35 @@ def render_cmd(
     except FileNotFoundError as exc:
         raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote {dest}")
+
+
+@app.command("gen-catalog")
+def gen_catalog_cmd(
+    path: Path = typer.Argument(..., help="含 interpretation.json 的工作区目录"),
+    step: bool = typer.Option(False, "--step", help="按步模式"),
+    once: bool = typer.Option(False, "--once", help="只执行下一步后暂停"),
+    continue_: bool = typer.Option(False, "--continue", help="从 session 暂停处继续"),
+    accept: bool = typer.Option(False, "--accept", help="确认 draft 落盘"),
+    restart: bool = typer.Option(False, "--restart", help="清除 gen_catalog 状态重新开始"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="覆盖已有 bid_outline.json"),
+) -> None:
+    ws = _resolve_workspace(path, None, overwrite=False)
+    if accept:
+        accept_gen_catalog(ws)
+        typer.echo(f"Wrote {ws.root / 'bid_outline.json'}")
+        return
+
+    mode = "step" if step or once or continue_ else "auto"
+    run_limit = 1 if (once and not continue_) or continue_ else None
+    run_gen_catalog_job(
+        ws,
+        mode=mode,
+        continue_from_session=continue_,
+        restart=restart,
+        overwrite=overwrite,
+        run_limit=run_limit,
+    )
+    typer.echo(f"Wrote {ws.root / 'bid_outline.draft.json'}")
 
 
 @app.command("all")

@@ -23,6 +23,7 @@ def prepare_interpret_source(
     workspace: OutputWorkspace,
     *,
     config: InsightsConfig,
+    ocr_enabled: bool | None = None,
 ) -> InterpretSource:
     content_md = workspace.content_path.read_text(encoding="utf-8")
     blocks = load_content_blocks(workspace)
@@ -30,7 +31,8 @@ def prepare_interpret_source(
     interpret_dir.mkdir(parents=True, exist_ok=True)
     source_path = interpret_dir / "source_content.md"
 
-    if config.ocr_enabled:
+    use_ocr = config.ocr_enabled if ocr_enabled is None else ocr_enabled
+    if use_ocr:
         enriched, _, ocr_count = enrich_content_with_ocr(workspace, content_md, config=config)
     else:
         enriched = content_md

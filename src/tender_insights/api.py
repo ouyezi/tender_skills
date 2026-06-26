@@ -4,6 +4,8 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+from typing import Literal
+
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.llm.openai_client import create_llm_client_from_env
 from doc_chunk.workspace.layout import OutputWorkspace
@@ -17,6 +19,8 @@ from tender_insights.interpret.models import InterpretationFile
 from tender_insights.interpret.render import render_interpretation_markdown
 from tender_insights.legal.extractor import review_legal_workspace
 from tender_insights.template.extractor import extract_templates_workspace
+from tender_insights.gen_catalog.accept import accept_gen_catalog_draft
+from tender_insights.gen_catalog.extractor import gen_catalog_workspace
 
 
 def resolve_workspace_path(path: Path, *, output_dir: Path | None = None, overwrite: bool = False) -> OutputWorkspace:
@@ -72,8 +76,11 @@ def extract_tender_brief(
     *,
     client: LLMClient | None = None,
     on_progress: Callable[[str, dict], None] | None = None,
+    setup_logging: bool = True,
 ):
     client = client or create_llm_client_from_env()
+    if setup_logging:
+        setup_interpret_llm_logging(workspace)
     return extract_brief_workspace(workspace, client, on_progress=on_progress)
 
 
@@ -91,3 +98,41 @@ def render_interpretation_report(
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(markdown, encoding="utf-8")
     return dest
+
+
+def run_gen_catalog_job(
+    workspace: OutputWorkspace,
+    *,
+    client: LLMClient | None = None,
+    mode: Literal["step", "auto"] = "auto",
+    continue_from_session: bool = False,
+    restart: bool = False,
+    overwrite: bool = False,
+    run_limit: int | None = None,
+    on_progress: Callable[[str, dict], None] | None = None,
+):
+    client = client or create_llm_client_from_env()
+    return gen_catalog_workspace(
+        workspace,
+        client,
+        mode=mode,
+        continue_from_session=continue_from_session,
+        restart=restart,
+        overwrite=overwrite,
+        run_limit=run_limit,
+        on_progress=on_progress,
+    )
+
+
+def continue_gen_catalog(workspace: OutputWorkspace, **kwargs):
+    return run_gen_catalog_job(
+        workspace,
+        mode="step",
+        continue_from_session=True,
+        run_limit=1,
+        **kwargs,
+    )
+
+
+def accept_gen_catalog(workspace: OutputWorkspace):
+    return accept_gen_catalog_draft(workspace)

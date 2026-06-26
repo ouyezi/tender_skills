@@ -4,7 +4,7 @@ import pytest
 
 from doc_chunk.errors import LLMUnavailableError
 from doc_chunk.llm.client import FakeLLMClient
-from doc_chunk.llm.openai_client import create_llm_client_from_env, resolve_llm_settings_from_env
+from doc_chunk.llm.openai_client import create_llm_client_from_env, llm_extra_body, resolve_llm_settings_from_env
 
 
 def test_fake_llm_client_returns_queued_response() -> None:
@@ -58,3 +58,15 @@ def test_legacy_openai_api_key_still_works(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("DOC_CHUNK_LLM_MODEL", "legacy-model")
     client = create_llm_client_from_env()
     assert client.model == "legacy-model"
+
+
+def test_llm_extra_body_disables_thinking_for_qwen(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
+    extra = llm_extra_body(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    assert extra == {"enable_thinking": False}
+
+
+def test_llm_extra_body_omitted_for_openai(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    extra = llm_extra_body(base_url="https://api.openai.com/v1")
+    assert extra is None

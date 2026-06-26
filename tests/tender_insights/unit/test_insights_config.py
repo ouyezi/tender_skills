@@ -7,6 +7,7 @@ def test_from_env_defaults(monkeypatch) -> None:
     assert cfg.ocr_model == "qwen-vl-ocr"
     assert cfg.segment_max_tokens == 12000
     assert cfg.ocr_enabled is True
+    assert cfg.brief_ocr_enabled is False
 
 
 def test_from_env_overrides(monkeypatch) -> None:

@@ -13,6 +13,7 @@ from doc_chunk.llm.stream_logging import (
     collect_chat_completion_stream,
     default_llm_timeout,
     stream_enabled,
+    thinking_enabled,
 )
 from doc_chunk.llm.usage import serialize_usage
 
@@ -53,6 +54,21 @@ def resolve_llm_settings_from_env() -> tuple[str, str, str]:
     return api_key, model, base_url
 
 
+def _is_dashscope_compatible(*, base_url: str | None, provider: str | None = None) -> bool:
+    if base_url:
+        lowered = base_url.lower()
+        if "dashscope" in lowered or "aliyuncs" in lowered:
+            return True
+    return (provider or os.getenv("LLM_PROVIDER") or "qwen").lower() == "qwen"
+
+
+def llm_extra_body(*, base_url: str | None = None) -> dict[str, object] | None:
+    """DashScope Qwen hybrid models accept ``enable_thinking`` via ``extra_body``."""
+    if not _is_dashscope_compatible(base_url=base_url):
+        return None
+    return {"enable_thinking": thinking_enabled()}
+
+
 class OpenAILLMClient:
     def __init__(self, *, model: str, api_key: str, base_url: str | None = None) -> None:
         self.model = model
@@ -90,6 +106,9 @@ class OpenAILLMClient:
         }
         if response_format == "json":
             kwargs["response_format"] = {"type": "json_object"}
+        extra = llm_extra_body(base_url=self.base_url)
+        if extra is not None:
+            kwargs["extra_body"] = extra
 
         use_stream = stream_enabled()
         if use_stream:

@@ -90,14 +90,28 @@ def _extract_chunked(
 ) -> TenderBriefLLMResponse:
     partials: list[TenderBriefPartialFacts] = []
     total = len(chunks)
+    step_total = total + 1
+    if on_progress:
+        on_progress(
+            "brief",
+            {
+                "message": f"共 {total} 个分片待处理",
+                "current": 0,
+                "total": total,
+                "step_total": step_total,
+                "step_current": 0,
+            },
+        )
     for index, chunk in enumerate(chunks, start=1):
         if on_progress:
             on_progress(
                 "brief",
                 {
-                    "message": f"提取分片 ({index}/{total})",
+                    "message": f"大模型处理分片 ({index}/{total})…",
                     "current": index,
                     "total": total,
+                    "step_total": step_total,
+                    "step_current": index,
                 },
             )
         segment_id = f"brief-{index:03d}"
@@ -131,9 +145,12 @@ def _extract_chunked(
         on_progress(
             "brief",
             {
-                "message": "合并分片生成概要",
+                "message": "大模型合并分片…",
                 "current": total,
                 "total": total,
+                "step_total": step_total,
+                "step_current": step_total,
+                "phase": "merge",
             },
         )
 
@@ -178,7 +195,23 @@ def extract_brief_workspace(
     on_progress: Callable[[str, dict], None] | None = None,
 ) -> TenderBriefFile:
     config = config or InsightsConfig.from_env()
-    source = prepare_interpret_source(workspace, config=config)
+    if on_progress:
+        ocr_note = "含图片 OCR" if config.brief_ocr_enabled else "跳过图片 OCR"
+        on_progress(
+            "brief",
+            {
+                "message": f"准备文档源（{ocr_note}）",
+                "current": 0,
+                "total": 1,
+                "step_total": 1,
+                "step_current": 0,
+            },
+        )
+    source = prepare_interpret_source(
+        workspace,
+        config=config,
+        ocr_enabled=config.brief_ocr_enabled,
+    )
     full_md = slice_for_llm(
         workspace,
         source.markdown,
@@ -205,6 +238,17 @@ def extract_brief_workspace(
             **empty.model_dump(),
         )
     elif len(chunks) == 1:
+        if on_progress:
+            on_progress(
+                "brief",
+                {
+                    "message": "大模型提取概要…",
+                    "current": 1,
+                    "total": 1,
+                    "step_total": 1,
+                    "step_current": 1,
+                },
+            )
         extracted = _extract_single(
             client,
             markdown=chunks[0],

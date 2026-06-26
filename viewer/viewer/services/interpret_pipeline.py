@@ -234,28 +234,31 @@ class InterpretPipelineService:
         dual_file: bool = False,
     ) -> None:
         try:
-            step_total = 1
+            latest_step_total = 1
             ws = OutputWorkspace.open_existing(workspace_dir)
             self._report(
                 job_id,
                 stage="brief",
                 message="提取招标基础概要",
                 step_current=0,
-                step_total=step_total,
+                step_total=latest_step_total,
                 detail="",
                 dual_file=dual_file,
             )
             client = self._llm_client_factory()
 
             def _brief_progress(_stage: str, payload: dict) -> None:
+                nonlocal latest_step_total
                 seg_current = int(payload.get("current", 0))
                 seg_total = int(payload.get("total", 1))
+                latest_step_total = int(payload.get("step_total", max(seg_total, 1)))
+                step_current = int(payload.get("step_current", seg_current))
                 self._report(
                     job_id,
                     stage="brief",
                     message=str(payload.get("message", "提取招标基础概要")),
-                    step_current=0 if seg_current == 0 else 1,
-                    step_total=step_total,
+                    step_current=step_current,
+                    step_total=latest_step_total,
                     segment_current=seg_current,
                     segment_total=seg_total,
                     detail=str(payload.get("detail", "")),
@@ -274,8 +277,8 @@ class InterpretPipelineService:
                 message="概要提取完成",
                 status="done",
                 progress_percent=100,
-                step_current=step_total,
-                step_total=step_total,
+                step_current=latest_step_total,
+                step_total=latest_step_total,
                 detail="",
                 dual_file=dual_file,
             )
@@ -441,13 +444,13 @@ class InterpretPipelineService:
                 on_progress=_pipeline_progress,
             )
 
-            brief_base = step
+            brief_base = pipeline_steps
             self._report(
                 job_id,
                 stage="brief",
                 message="提取招标基础概要",
                 step_current=brief_base,
-                step_total=step_total,
+                step_total=brief_base + 1,
                 detail="",
                 dual_file=dual_file,
             )
@@ -457,13 +460,14 @@ class InterpretPipelineService:
             def _brief_progress(_stage: str, payload: dict) -> None:
                 seg_current = int(payload.get("current", 0))
                 seg_total = int(payload.get("total", 1))
-                step_current = brief_base + (1 if seg_current > 0 else 0)
+                step_total_val = int(payload.get("step_total", max(seg_total, 1)))
+                step_current = int(payload.get("step_current", seg_current))
                 self._report(
                     job_id,
                     stage="brief",
                     message=str(payload.get("message", "提取招标基础概要")),
-                    step_current=min(step_current, step_total - 1),
-                    step_total=step_total,
+                    step_current=brief_base + step_current,
+                    step_total=brief_base + step_total_val,
                     segment_current=seg_current,
                     segment_total=seg_total,
                     detail=str(payload.get("detail", "")),
