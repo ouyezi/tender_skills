@@ -160,3 +160,38 @@ def get_gen_catalog_llm_calls(session_id: str) -> list[dict]:
         return []
     calls = _read_llm_calls(workspace)
     return [c for c in calls if str(c.get("call_type", "")).startswith("gen_catalog")]
+
+
+@router.get("/sessions/{session_id}/status")
+def get_gen_catalog_status(session_id: str) -> dict:
+    from tender_insights.gen_catalog.models import BidOutlineNode
+    from tender_insights.gen_catalog.queue import find_node, next_pending_node_id
+
+    session = _get_session_or_404(session_id)
+    workspace = Path(session.workspace_path)
+    session_path = workspace / "gen_catalog" / "session.json"
+    draft_path = workspace / "bid_outline.draft.json"
+    if not session_path.is_file():
+        return {"has_session": False, "has_draft": draft_path.is_file()}
+    data = json.loads(session_path.read_text(encoding="utf-8"))
+    pending_id = next_pending_node_id(data.get("node_queue", []), data.get("completed_steps", []))
+    next_title: str | None = None
+    if pending_id and draft_path.is_file():
+        draft = json.loads(draft_path.read_text(encoding="utf-8"))
+        root = BidOutlineNode.model_validate(draft["root"])
+        node = find_node(root, pending_id)
+        if node is not None:
+            next_title = node.title
+    return {
+        "has_session": True,
+        "has_draft": draft_path.is_file(),
+        "mode": data.get("mode"),
+        "status": data.get("status"),
+        "step_index": data.get("step_index", 0),
+        "step_total": data.get("step_total", 0),
+        "refine_chapters": len(data.get("node_queue", [])),
+        "completed_steps": data.get("completed_steps", []),
+        "next_node_id": pending_id,
+        "next_node_title": next_title,
+        "current_node_title": data.get("current_node_title"),
+    }

@@ -9,12 +9,12 @@ from doc_chunk.workspace.layout import OutputWorkspace
 from tender_insights.gen_catalog.accept import accept_gen_catalog_draft
 from tender_insights.gen_catalog.excerpt import pick_node_excerpt
 from tender_insights.gen_catalog.extractor import gen_catalog_workspace, run_gen_catalog_initial
-from tender_insights.gen_catalog.models import BidOutlineNode
+from tender_insights.gen_catalog.models import BidOutlineNode, GenCatalogSession
 from tender_insights.gen_catalog.prerequisites import validate_prerequisites
-from tender_insights.gen_catalog.queue import build_node_queue, find_node, next_pending_node_id
+from tender_insights.gen_catalog.queue import build_node_queue, build_refine_queue, find_node, next_pending_node_id
 from tender_insights.gen_catalog.render import render_bid_outline_markdown
 from tender_insights.gen_catalog.session import clear_gen_catalog_artifacts, load_session, save_session
-from tender_insights.gen_catalog.models import GenCatalogSession
+from tender_insights.gen_catalog.normalize import normalize_outline_ids
 from tender_insights.gen_catalog.prompts import GEN_CATALOG_INITIAL_SYSTEM, GEN_CATALOG_REFINE_SYSTEM
 from tender_insights.gen_catalog.context import build_initial_user_prompt
 from tender_insights.interpret.models import (
@@ -94,6 +94,20 @@ def test_build_node_queue_preorder() -> None:
     assert build_node_queue(root) == ["bid-001", "bid-002", "bid-003"]
 
 
+def test_build_refine_queue_only_level_one() -> None:
+    root = BidOutlineNode(
+        id="bid-root",
+        title="root",
+        level=0,
+        order=0,
+        children=[
+            _node("bid-001", "A", [_node("bid-002", "A1")]),
+            _node("bid-003", "B"),
+        ],
+    )
+    assert build_refine_queue(root) == ["bid-001", "bid-003"]
+
+
 def test_next_pending_node_id_skips_completed() -> None:
     queue = ["bid-001", "bid-002", "bid-003"]
     completed = ["initial", "bid-001"]
@@ -138,6 +152,18 @@ def test_validate_prerequisites_warns_missing_brief(tmp_path: Path) -> None:
     ws_root = _minimal_interpretation(tmp_path)
     report = validate_prerequisites(_open_ws(ws_root))
     assert report.warnings
+
+
+def test_normalize_outline_ids_remaps_dir_prefix() -> None:
+    root = BidOutlineNode(
+        id="bid-root",
+        title="root",
+        level=0,
+        order=0,
+        children=[_node("dir-001", "投标函"), _node("dir-002", "技术方案")],
+    )
+    normalize_outline_ids(root)
+    assert [c.id for c in root.children] == ["bid-001", "bid-002"]
 
 
 def test_session_roundtrip(tmp_path: Path) -> None:

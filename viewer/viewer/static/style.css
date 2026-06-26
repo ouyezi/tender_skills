@@ -120,6 +120,10 @@ button:hover {
   padding: 0.75rem;
 }
 
+.llm-calls-list {
+  margin-top: 0.5rem;
+}
+
 .muted {
   color: #666;
 }

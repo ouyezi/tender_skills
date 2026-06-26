@@ -16,8 +16,9 @@ from tender_insights.gen_catalog.excerpt import pick_node_excerpt
 from tender_insights.gen_catalog.models import BidOutlineFile, BidOutlineLLMResponse, BidOutlineNode, GenCatalogSession
 from tender_insights.gen_catalog.prerequisites import PrerequisiteReport, validate_prerequisites
 from tender_insights.gen_catalog.prompts import GEN_CATALOG_INITIAL_SYSTEM, GEN_CATALOG_REFINE_SYSTEM
+from tender_insights.gen_catalog.normalize import normalize_outline_ids
 from tender_insights.gen_catalog.queue import (
-    build_node_queue,
+    build_refine_queue,
     compute_step_total,
     find_node,
     next_pending_node_id,
@@ -113,6 +114,7 @@ def run_gen_catalog_initial(
         max_retries=config.max_retries,
         log_context={"call_type": "gen_catalog_initial", "segment_id": "initial"},
     )
+    normalize_outline_ids(response.outline)
     step_total = compute_step_total(response.outline)
     draft = _build_draft_shell(
         report,
@@ -128,7 +130,7 @@ def run_gen_catalog_initial(
         status="paused" if mode == "step" else "running",
         step_index=1,
         step_total=step_total,
-        node_queue=build_node_queue(response.outline),
+        node_queue=build_refine_queue(response.outline),
         completed_steps=["initial"],
     )
     save_session(workspace, session)
@@ -169,6 +171,7 @@ def run_gen_catalog_node(
         messages=messages,
         workspace=str(workspace.root),
         segment_id=node_id,
+        section_path=[title],
     )
     response = extract_json_model(
         client,
@@ -177,19 +180,16 @@ def run_gen_catalog_node(
         max_retries=config.max_retries,
         log_context={"call_type": "gen_catalog_node", "segment_id": node_id},
     )
-    step_total = compute_step_total(response.outline)
     draft = _build_draft_shell(
         report,
         response.outline,
         mode=session.mode,
         status=draft.status,
         step_index=session.step_index + 1,
-        step_total=step_total,
+        step_total=session.step_total,
     )
     save_draft(workspace, draft)
     session.step_index += 1
-    session.step_total = step_total
-    session.node_queue = build_node_queue(response.outline)
     session.completed_steps.append(node_id)
     session.current_node_id = node_id
     session.current_node_title = title

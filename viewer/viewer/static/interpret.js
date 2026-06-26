@@ -4,6 +4,7 @@ const state = {
   result: null,
   brief: null,
   activeTab: "brief",
+  tabUserPinned: false,
   llmCalls: [],
   pendingJobKind: "interpret",
 };
@@ -103,8 +104,20 @@ function renderProgress(job, dualFile) {
   document.getElementById("interpret-progress-fill").style.width = `${percent}%`;
 }
 
-function hideProgress() {
-  document.getElementById("interpret-progress").hidden = true;
+function resetActiveTab(tab) {
+  state.activeTab = tab;
+  state.tabUserPinned = false;
+}
+
+function maybeSetActiveTab(tab) {
+  if (!state.tabUserPinned) {
+    state.activeTab = tab;
+  }
+}
+
+function pinActiveTab(tab) {
+  state.activeTab = tab;
+  state.tabUserPinned = true;
 }
 
 async function refreshSessions() {
@@ -138,12 +151,8 @@ async function pollJob(jobId, dualFile) {
         const job = await api(`/api/interpret/jobs/${jobId}`);
         if (job.status === "running") {
           renderProgress(job, dualFile);
-          if (job.stage === "brief") {
-            state.activeTab = "brief";
-            showResultPanel();
-          } else if (job.stage === "interpret" || job.stage === "template") {
-            showResultPanel();
-            await loadLlmCalls(job.session_id);
+          if (job.stage === "interpret" || job.stage === "template" || job.stage === "brief") {
+            await refreshLlmCalls(job.session_id, { render: state.activeTab === "llm" });
           }
         }
         if (job.status === "done") {
@@ -154,8 +163,8 @@ async function pollJob(jobId, dualFile) {
           await refreshSessions();
           if (job.job_kind === "brief") {
             await loadBrief(job.session_id);
-            state.activeTab = "brief";
-            showResultPanel();
+            maybeSetActiveTab("brief");
+            initResultPanel();
           } else {
             await loadSessionData(job.session_id);
           }
@@ -167,8 +176,8 @@ async function pollJob(jobId, dualFile) {
           hideProgress();
           state.result = null;
           document.getElementById("overview-panel").hidden = true;
-          await loadLlmCalls(job.session_id);
-          showResultPanel();
+          await refreshLlmCalls(job.session_id, { render: state.activeTab === "llm" });
+          initResultPanel();
           const msg = job.error || job.message || "解读失败";
           const needsApiKey =
             /LLM_API_KEY|OPENAI_API_KEY|required for LLM|LLMUnavailable/i.test(msg) &&
@@ -207,14 +216,18 @@ function renderTabs() {
     btn.className = state.activeTab === tab.key ? "tab active" : "tab";
     btn.textContent = tab.label;
     btn.addEventListener("click", async () => {
-      state.activeTab = tab.key;
-      if (state.sessionId) {
-        showResultPanel();
-      }
+      pinActiveTab(tab.key);
       renderTabs();
-      if (tab.key === "llm" && state.sessionId) {
-        await loadLlmCalls(state.sessionId);
+      const container = document.getElementById("result-cards");
+      if (tab.key === "llm") {
+        container.innerHTML = "";
+        if (state.sessionId) {
+          await refreshLlmCalls(state.sessionId, { render: true });
+        } else {
+          renderLlmCalls(container);
+        }
       } else {
+        container.innerHTML = "";
         renderCards();
       }
     });
@@ -326,19 +339,20 @@ function renderBrief(container) {
 
 function renderCards() {
   const container = document.getElementById("result-cards");
-  container.innerHTML = "";
   const tab = TABS.find((t) => t.key === state.activeTab);
   if (!tab) {
     return;
   }
 
-  if (tab.key === "brief") {
-    renderBrief(container);
+  if (tab.key === "llm") {
+    renderLlmCalls(container);
     return;
   }
 
-  if (tab.key === "llm") {
-    renderLlmCalls(container);
+  container.innerHTML = "";
+
+  if (tab.key === "brief") {
+    renderBrief(container);
     return;
   }
 
@@ -427,79 +441,16 @@ function renderCards() {
 }
 
 function renderLlmCalls(container) {
-  if (!state.llmCalls.length) {
-    const hint = state.result ? "暂无 LLM 调用记录" : "解读进行中，LLM 调用将实时更新…";
-    container.innerHTML = `<p class="empty-tab">${hint}</p>`;
-    return;
-  }
-  for (const call of state.llmCalls) {
-    const card = document.createElement("article");
-    card.className = "result-card llm-call-card";
-    const path = (call.section_path || []).join(" › ");
-    const title = call.segment_id || call.call_type || "调用";
-    let body = `<h3>${escapeHtml(title)}</h3>`;
-    body += `<p class="card-path">${escapeHtml(call.call_type || "")}${path ? ` · ${escapeHtml(path)}` : ""}</p>`;
-    if (call.timestamp) {
-      body += `<p class="card-meta">${escapeHtml(call.timestamp)}</p>`;
-    }
-    if (call.token_estimate != null) {
-      body += `<p><strong>token 估计：</strong>${call.token_estimate}</p>`;
-    }
-    if (call.messages?.length) {
-      body += `<details open><summary>Prompt（${call.messages.length} 条消息）</summary><pre class="llm-payload">${escapeHtml(
-        JSON.stringify(call.messages, null, 2),
-      )}</pre></details>`;
-    }
-    if (call.response) {
-      body += `<details><summary>Response（校验通过）</summary><pre class="llm-payload">${escapeHtml(call.response)}</pre></details>`;
-    }
-    if (call.attempts?.length) {
-      body += `<details><summary>调用尝试（${call.attempts.length} 次）</summary>`;
-      for (const att of call.attempts) {
-        const status = att.success ? "成功" : "失败";
-        const idx = (att.attempt ?? 0) + 1;
-        body += `<div class="llm-attempt">`;
-        body += `<p><strong>第 ${idx} 次 · ${status}</strong>`;
-        if (att.duration_ms != null) {
-          body += ` · ${att.duration_ms} ms`;
-        }
-        if (att.stream != null) {
-          body += ` · ${att.stream ? "流式" : "非流式"}`;
-        }
-        body += `</p>`;
-        if (att.model) {
-          body += `<p><strong>模型：</strong>${escapeHtml(att.model)}</p>`;
-        }
-        if (att.finish_reason) {
-          body += `<p><strong>结束原因：</strong>${escapeHtml(att.finish_reason)}</p>`;
-        }
-        if (att.usage) {
-          const cached =
-            att.usage.prompt_tokens_details?.cached_tokens ??
-            att.usage.cached_tokens ??
-            null;
-          body += `<p><strong>Token 用量：</strong>`;
-          if (cached != null) {
-            body += ` cache=${cached}`;
-          }
-          body += `</p>`;
-          body += `<pre class="llm-payload">${escapeHtml(JSON.stringify(att.usage, null, 2))}</pre>`;
-        }
-        if (att.validation_error) {
-          body += `<p class="card-error"><strong>校验失败（响应已收到）：</strong>${escapeHtml(att.validation_error)}</p>`;
-        }
-        if (att.response_raw) {
-          const label = att.success ? "原始响应" : "原始响应（未通过校验）";
-          body += `<details${att.success ? "" : " open"}><summary>${label}（${att.response_chars ?? att.response_raw.length} 字符）</summary>`;
-          body += `<pre class="llm-payload">${escapeHtml(att.response_raw)}</pre></details>`;
-        }
-        body += `</div>`;
-      }
-      body += `</details>`;
-    }
-    card.innerHTML = body;
-    container.appendChild(card);
-  }
+  const hint = state.result ? "暂无 LLM 调用记录" : "解读进行中，LLM 调用将实时更新…";
+  window.LlmCallsUi.syncLlmCallCards(container, state.llmCalls, {
+    emptyHint: hint,
+    renderCard: (call) => {
+      const path = (call.section_path || []).join(" › ");
+      const title = call.segment_id || call.call_type || "调用";
+      const subtitle = [call.call_type || "", path].filter(Boolean).join(" · ");
+      return window.LlmCallCard.buildLlmCallCard(call, { title, subtitle });
+    },
+  });
 }
 
 function escapeHtml(text) {
@@ -555,17 +506,28 @@ function flattenNodes(nodes, out = []) {
 
 function showResultPanel() {
   document.getElementById("result-panel").hidden = false;
+}
+
+function initResultPanel() {
+  showResultPanel();
   renderTabs();
   renderCards();
 }
 
-async function loadLlmCalls(sessionId) {
+async function refreshLlmCalls(sessionId, { render = null } = {}) {
   if (!sessionId) {
     state.llmCalls = [];
     return;
   }
   state.llmCalls = await api(`/api/interpret/sessions/${sessionId}/llm-calls`).catch(() => []);
-  renderCards();
+  const shouldRender = render ?? state.activeTab === "llm";
+  if (shouldRender) {
+    renderLlmCalls(document.getElementById("result-cards"));
+  }
+}
+
+async function loadLlmCalls(sessionId) {
+  await refreshLlmCalls(sessionId, { render: true });
 }
 
 async function loadBrief(sessionId) {
@@ -588,7 +550,7 @@ async function loadResult(sessionId) {
     const result = await api(`/api/interpret/sessions/${sessionId}/result`);
     await resolveNodeIds(sessionId, result);
     state.result = result;
-    await loadLlmCalls(sessionId);
+    await refreshLlmCalls(sessionId, { render: false });
     renderOverview(result.interpretation?.overview);
     const goBtn = document.getElementById("go-gen-catalog-btn");
     if (goBtn) {
@@ -609,13 +571,13 @@ async function loadSessionData(sessionId) {
   const hasBrief = await loadBrief(sessionId);
   const hasResult = await loadResult(sessionId);
   if (!hasResult) {
-    await loadLlmCalls(sessionId);
+    await refreshLlmCalls(sessionId, { render: false });
     document.getElementById("overview-panel").hidden = true;
   }
   if (hasBrief && !hasResult) {
-    state.activeTab = "brief";
+    maybeSetActiveTab("brief");
   }
-  showResultPanel();
+  initResultPanel();
   return { hasBrief, hasResult };
 }
 
@@ -626,9 +588,9 @@ async function enterRunningSession(sessionId, jobId, dualFile, jobKind = "interp
   if (jobKind !== "brief") {
     document.getElementById("overview-panel").hidden = true;
   }
-  showResultPanel();
+  initResultPanel();
   if (jobKind !== "brief") {
-    await loadLlmCalls(sessionId);
+    await refreshLlmCalls(sessionId, { render: state.activeTab === "llm" });
   }
   await pollJob(jobId, dualFile);
 }
@@ -669,9 +631,9 @@ async function resolveDualFile(sessionId) {
 async function startBriefJob({ sessionId, jobId, dualFile }) {
   state.sessionId = sessionId;
   state.pendingJobKind = "brief";
-  state.activeTab = "brief";
+  resetActiveTab("brief");
   document.getElementById("overview-panel").hidden = true;
-  showResultPanel();
+  initResultPanel();
   await refreshSessions();
   document.getElementById("interpret-session-select").value = sessionId;
   await pollJob(jobId, dualFile);
@@ -681,8 +643,9 @@ async function startInterpretJob({ sessionId, jobId, dualFile }) {
   state.sessionId = sessionId;
   state.pendingJobKind = "interpret";
   state.result = null;
+  state.tabUserPinned = false;
   document.getElementById("overview-panel").hidden = true;
-  showResultPanel();
+  initResultPanel();
   await refreshSessions();
   document.getElementById("interpret-session-select").value = sessionId;
   await pollJob(jobId, dualFile);
@@ -796,6 +759,7 @@ document.getElementById("close-source-panel").addEventListener("click", () => {
 document.getElementById("interpret-session-select").addEventListener("change", async (event) => {
   const sessionId = event.target.value || null;
   state.sessionId = sessionId;
+  state.tabUserPinned = false;
   if (!sessionId) {
     document.getElementById("result-panel").hidden = true;
     return;
@@ -809,16 +773,16 @@ document.getElementById("interpret-session-select").addEventListener("change", a
       state.result = null;
       document.getElementById("overview-panel").hidden = true;
       await loadBrief(sessionId);
-      await loadLlmCalls(sessionId);
-      showResultPanel();
+      await refreshLlmCalls(sessionId, { render: false });
+      initResultPanel();
     }
   } else {
     state.result = null;
     state.brief = null;
     document.getElementById("overview-panel").hidden = true;
     await loadBrief(sessionId);
-    await loadLlmCalls(sessionId);
-    showResultPanel();
+    await refreshLlmCalls(sessionId, { render: false });
+    initResultPanel();
   }
 });
 

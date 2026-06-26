@@ -76,8 +76,11 @@ def extract_tender_brief(
     *,
     client: LLMClient | None = None,
     on_progress: Callable[[str, dict], None] | None = None,
+    setup_logging: bool = True,
 ):
     client = client or create_llm_client_from_env()
+    if setup_logging:
+        setup_interpret_llm_logging(workspace)
     return extract_brief_workspace(workspace, client, on_progress=on_progress)
 
 

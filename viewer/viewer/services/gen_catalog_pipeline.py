@@ -57,12 +57,27 @@ class GenCatalogPipelineService:
         dual_file: bool = False,
     ) -> None:
         try:
+            self._jobs.update(
+                job_id,
+                stage="gen_catalog",
+                message="正在连接大模型…",
+                status="running",
+                progress_percent=0,
+                dual_file=dual_file,
+            )
             ws = OutputWorkspace.open_existing(workspace_dir)
             client = self._llm_client_factory()
             run_limit = 1 if mode == "step" or continue_from_session else None
 
             def _progress(_stage: str, payload: dict) -> None:
                 self._report(job_id, payload=payload, dual_file=dual_file)
+
+            self._jobs.update(
+                job_id,
+                message="正在生成目录（大模型处理中）…",
+                status="running",
+                dual_file=dual_file,
+            )
 
             await asyncio.to_thread(
                 run_gen_catalog_job,
@@ -105,6 +120,14 @@ class GenCatalogPipelineService:
         dual_file: bool = False,
     ) -> None:
         try:
+            self._jobs.update(
+                job_id,
+                stage="gen_catalog_accept",
+                message="正在确认落盘…",
+                status="running",
+                progress_percent=0,
+                dual_file=dual_file,
+            )
             ws = OutputWorkspace.open_existing(workspace_dir)
             await asyncio.to_thread(accept_gen_catalog, ws)
             self._jobs.update(

@@ -4,6 +4,7 @@ from tender_insights.gen_catalog.models import BidOutlineNode
 
 
 def build_node_queue(root: BidOutlineNode) -> list[str]:
+    """Preorder of all nodes except ``bid-root`` (legacy / diagnostics)."""
     queue: list[str] = []
 
     def walk(node: BidOutlineNode) -> None:
@@ -15,6 +16,11 @@ def build_node_queue(root: BidOutlineNode) -> list[str]:
     for child in root.children:
         walk(child)
     return queue
+
+
+def build_refine_queue(root: BidOutlineNode) -> list[str]:
+    """Only level-1 chapters (direct children of ``bid-root``) need per-step LLM refinement."""
+    return [child.id for child in root.children]
 
 
 def find_node(root: BidOutlineNode, node_id: str) -> BidOutlineNode | None:
@@ -37,4 +43,4 @@ def next_pending_node_id(queue: list[str], completed_steps: list[str]) -> str | 
 
 
 def compute_step_total(root: BidOutlineNode) -> int:
-    return 1 + len(build_node_queue(root))
+    return 1 + len(build_refine_queue(root))
