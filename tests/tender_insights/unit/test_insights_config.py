@@ -32,3 +32,11 @@ def test_template_config_from_env(monkeypatch) -> None:
     assert cfg.template_shard_max_chars == 30000
     assert cfg.template_char_chunk_overlap == 600
     assert cfg.template_plan_enabled is False
+
+
+def test_template_config_defaults(monkeypatch) -> None:
+    monkeypatch.delenv("TEMPLATE_WHOLE_DOC_MAX_CHARS", raising=False)
+    monkeypatch.delenv("TEMPLATE_SHARD_MAX_CHARS", raising=False)
+    cfg = InsightsConfig.from_env()
+    assert cfg.template_whole_doc_max_chars == 6000
+    assert cfg.template_shard_max_chars == 6000

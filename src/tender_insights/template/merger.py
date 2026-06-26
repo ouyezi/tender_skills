@@ -6,6 +6,7 @@ import unicodedata
 from tender_insights.template.models import TemplateHitLLM
 
 _PAREN_RE = re.compile(r"[（(][^）)]*[）)]|[（()）]")
+_MARKDOWN_PREFIX_LEN = 300
 
 
 def _normalize_fullwidth(text: str) -> str:
@@ -37,26 +38,28 @@ def _jaccard(a: str, b: str) -> float:
     return len(set_a & set_b) / len(union)
 
 
-def _overlap_ratio(a_start: int, a_end: int, b_start: int, b_end: int) -> float:
-    inter = max(0, min(a_end, b_end) - max(a_start, b_start))
-    shorter = min(a_end - a_start, b_end - b_start)
-    return inter / shorter if shorter else 0.0
+def _markdown_fingerprint(hit: TemplateHitLLM) -> str:
+    text = hit.markdown.strip() or hit.source_excerpt
+    return text[:_MARKDOWN_PREFIX_LEN]
 
 
 def dedupe_template_hits(hits: list[TemplateHitLLM]) -> list[TemplateHitLLM]:
-    sorted_hits = sorted(hits, key=lambda h: (-h.confidence, h.char_start))
+    sorted_hits = sorted(hits, key=lambda h: (-h.confidence, h.title))
     kept: list[TemplateHitLLM] = []
     for hit in sorted_hits:
+        title_key = _normalized_title(hit.title)
+        fp = _markdown_fingerprint(hit)
         if any(
-            _overlap_ratio(hit.char_start, hit.char_end, k.char_start, k.char_end) > 0.5
+            _normalized_title(k.title) == title_key
+            and _jaccard(fp, _markdown_fingerprint(k)) > 0.8
             for k in kept
         ):
             continue
         if any(
-            _normalized_title(hit.title) == _normalized_title(k.title)
-            and _jaccard(hit.source_excerpt, k.source_excerpt) > 0.8
+            fp
+            and _jaccard(fp, _markdown_fingerprint(k)) > 0.9
             for k in kept
         ):
             continue
         kept.append(hit)
-    return sorted(kept, key=lambda h: h.char_start)
+    return sorted(kept, key=lambda h: h.title)

@@ -522,6 +522,15 @@ button:hover {
   border-bottom: 1px solid #eee;
 }
 
+.result-card-clickable {
+  cursor: pointer;
+}
+
+.result-card-clickable:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.12);
+}
+
 .empty-tab {
   color: #666;
   font-style: italic;

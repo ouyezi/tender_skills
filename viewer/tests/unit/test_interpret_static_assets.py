@@ -84,3 +84,10 @@ def test_interpret_js_has_template_job() -> None:
     assert "/template" in js
     assert "startTemplateJob" in js
     assert "TEMPLATE_STAGES" in js
+    assert "openTemplatePanel" in js
+    assert "查看模版" in js
+
+
+def test_interpret_html_has_source_panel_title() -> None:
+    html = (STATIC / "interpret.html").read_text(encoding="utf-8")
+    assert 'id="source-panel-title"' in html

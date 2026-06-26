@@ -30,7 +30,6 @@ from tender_insights.template.planner import (
     write_plan_json,
 )
 from tender_insights.template.prompts import TEMPLATE_EXTRACT_SYSTEM, build_extract_user_prompt
-from tender_insights.template.slicer import slice_template_hit
 
 logger = logging.getLogger(__name__)
 
@@ -57,43 +56,35 @@ def _append_manifest_warning(workspace: OutputWorkspace, warning: str) -> None:
     save_manifest(workspace, manifest)
 
 
-def _find_shard_for_hit(plan: TemplatePlanFile, char_start: int) -> TemplateShard | None:
-    for shard in plan.shards:
-        if shard.char_start <= char_start < shard.char_end:
-            return shard
-    return None
+def _shard_map(plan: TemplatePlanFile) -> dict[str, TemplateShard]:
+    return {shard.shard_id: shard for shard in plan.shards}
 
 
 def _materialize_templates(
     workspace: OutputWorkspace,
-    content_md: str,
     hits: list[TemplateHitLLM],
     plan: TemplatePlanFile,
 ) -> tuple[list[TemplateEntry], list[str]]:
     templates_dir = workspace.root / "templates"
     templates_dir.mkdir(parents=True, exist_ok=True)
+    shards = _shard_map(plan)
     type_counters: dict[str, int] = {}
     entries: list[TemplateEntry] = []
     warnings: list[str] = []
 
     for idx, hit in enumerate(hits, start=1):
-        sliced = slice_template_hit(workspace, content_md, hit)
-        if sliced is None:
-            msg = f"invalid char range for template: {hit.title}"
+        md = hit.markdown.strip()
+        if not md:
+            msg = f"empty markdown for template: {hit.title}"
             warnings.append(msg)
-            logger.warning(
-                "template hit out of range: %s [%s, %s)",
-                hit.title,
-                hit.char_start,
-                hit.char_end,
-            )
+            logger.warning(msg)
             continue
-        md, char_start, char_end = sliced
         type_counters[hit.type] = type_counters.get(hit.type, 0) + 1
         filename = f"{hit.type}-{type_counters[hit.type]:03d}.md"
         rel_path = f"templates/{filename}"
         (templates_dir / filename).write_text(md, encoding="utf-8")
-        shard = _find_shard_for_hit(plan, char_start)
+        shard = shards.get(hit.shard_id) if hit.shard_id else None
+        excerpt = hit.source_excerpt.strip() or md[:200]
         entries.append(
             TemplateEntry(
                 id=f"tpl-{idx:03d}",
@@ -102,13 +93,15 @@ def _materialize_templates(
                 title=hit.title,
                 section_path=shard.section_path if shard else [],
                 file=rel_path,
-                char_start=char_start,
-                char_end=char_end,
+                char_start=None,
+                char_end=None,
                 confidence=hit.confidence,
                 extraction_method="llm",
-                shard_id=shard.shard_id if shard else None,
+                shard_id=hit.shard_id,
             )
         )
+        if not hit.source_excerpt:
+            hit.source_excerpt = excerpt
     return entries, warnings
 
 
@@ -177,7 +170,9 @@ def extract_templates_workspace(
                     "segment_id": shard.shard_id,
                 },
             )
-            all_hits.extend(batch.templates)
+            for hit in batch.templates:
+                hit.shard_id = shard.shard_id
+                all_hits.append(hit)
         except LLMExtractionError:
             logger.warning("template extract failed for %s", shard.shard_id)
 
@@ -187,7 +182,7 @@ def extract_templates_workspace(
         {"current": total_steps - 1, "total": total_steps},
     )
     merged = dedupe_template_hits(all_hits)
-    entries, _warnings = _materialize_templates(workspace, content_md, merged, plan)
+    entries, _warnings = _materialize_templates(workspace, merged, plan)
 
     result = TemplatesIndexFile(
         schema_version="1.1",

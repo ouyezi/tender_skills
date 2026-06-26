@@ -61,8 +61,7 @@ async def test_single_file_interpret_pipeline(
                     "title": "授权书",
                     "type": "authorization",
                     "type_label": "授权书",
-                    "char_start": 0,
-                    "char_end": 20,
+                    "markdown": "# 授权书\n\n授权",
                     "confidence": 0.9,
                     "source_excerpt": "授权",
                 }

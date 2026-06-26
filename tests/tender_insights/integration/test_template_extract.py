@@ -18,7 +18,6 @@ def test_extract_templates_llm_pipeline(tmp_path, sample_docx, monkeypatch) -> N
     run_pipeline(sample_docx, ws_dir, overwrite=True, skip_refine=True, skip_enrich=True)
     workspace = OutputWorkspace.open_existing(ws_dir)
 
-    content_len = len(workspace.content_path.read_text(encoding="utf-8"))
     extract_json = json.dumps(
         {
             "templates": [
@@ -26,8 +25,7 @@ def test_extract_templates_llm_pipeline(tmp_path, sample_docx, monkeypatch) -> N
                     "title": "授权书",
                     "type": "authorization",
                     "type_label": "授权书",
-                    "char_start": 0,
-                    "char_end": min(200, content_len),
+                    "markdown": "# 授权书\n\n本授权书声明…",
                     "confidence": 0.9,
                     "source_excerpt": "授权",
                 }
@@ -43,7 +41,9 @@ def test_extract_templates_llm_pipeline(tmp_path, sample_docx, monkeypatch) -> N
     assert (ws_dir / "templates" / "plan.json").exists()
     assert (ws_dir / "templates" / "index.json").exists()
     assert result.schema_version == "1.1"
-    assert result.plan_ref == "templates/plan.json"
+    md_path = workspace.root / result.templates[0].file
+    assert md_path.is_file()
+    assert "授权书" in md_path.read_text(encoding="utf-8")
 
 
 def test_extract_templates_coarse_outline(tmp_path, monkeypatch) -> None:
@@ -56,11 +56,6 @@ def test_extract_templates_coarse_outline(tmp_path, monkeypatch) -> None:
     shutil.copy(COARSE_OUTLINE_FIXTURE / "outline.json", ws_dir / "outline.json")
     shutil.copy(FIXTURES / "expected" / "manifest_minimal.json", ws_dir / "manifest.json")
 
-    content = (ws_dir / "content.md").read_text(encoding="utf-8")
-    auth_start = content.index("## 授权书")
-    decl_start = content.index("## 声明函")
-    ch5_start = content.index("# 第五章")
-
     extract_json = json.dumps(
         {
             "templates": [
@@ -68,8 +63,7 @@ def test_extract_templates_coarse_outline(tmp_path, monkeypatch) -> None:
                     "title": "授权书",
                     "type": "authorization",
                     "type_label": "授权书",
-                    "char_start": auth_start,
-                    "char_end": decl_start,
+                    "markdown": "## 授权书\n\n授权正文",
                     "confidence": 0.95,
                     "source_excerpt": "授权",
                 },
@@ -77,8 +71,7 @@ def test_extract_templates_coarse_outline(tmp_path, monkeypatch) -> None:
                     "title": "声明函",
                     "type": "declaration",
                     "type_label": "声明函",
-                    "char_start": decl_start,
-                    "char_end": ch5_start,
+                    "markdown": "## 声明函\n\n声明正文",
                     "confidence": 0.92,
                     "source_excerpt": "声明",
                 },
@@ -95,6 +88,5 @@ def test_extract_templates_coarse_outline(tmp_path, monkeypatch) -> None:
     assert len(result.templates) == 2
     assert {t.title for t in result.templates} == {"授权书", "声明函"}
     assert (ws_dir / "templates" / "plan.json").exists()
-    assert (ws_dir / "templates" / "index.json").exists()
     plan = json.loads((ws_dir / "templates" / "plan.json").read_text(encoding="utf-8"))
     assert plan["shard_count"] == 6

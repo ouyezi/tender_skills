@@ -21,7 +21,7 @@ class TemplatePlanFile(BaseModel):
     whole_doc_chars: int = 0
     shard_count: int = 0
     shards: list[TemplateShard] = Field(default_factory=list)
-    merge_policy: str = "dedupe_by_char_overlap_and_title"
+    merge_policy: str = "dedupe_by_title_and_markdown"
     llm_notes: str | None = None
     priority_sections: list[str] = Field(default_factory=list)
 
@@ -30,10 +30,10 @@ class TemplateHitLLM(BaseModel):
     title: str
     type: Literal["commitment", "authorization", "declaration", "other"]
     type_label: str
-    char_start: int
-    char_end: int
+    markdown: str = ""
     confidence: float = Field(ge=0.0, le=1.0)
     source_excerpt: str = ""
+    shard_id: str | None = None
 
 
 class TemplateExtractResponse(BaseModel):

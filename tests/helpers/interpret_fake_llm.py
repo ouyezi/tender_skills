@@ -23,7 +23,7 @@ class InterpretFakeLLM(FakeLLMClient):
         user_text = " ".join(
             str(m.get("content", "")) for m in messages if m.get("role") == "user"
         )
-        if self._extract_json and "本片段全局偏移" in user_text:
+        if self._extract_json and "模版正文分片" in user_text:
             return self._extract_json
         if self._plan_json and ("分片摘要" in user_text or "shard" in user_text.lower()):
             return self._plan_json

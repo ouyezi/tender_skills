@@ -37,8 +37,8 @@ export LLM_MODEL=qwen3.7-max
 模版分片与规划专用配置（见 `.env.example`）：
 
 ```bash
-export TEMPLATE_WHOLE_DOC_MAX_CHARS=80000   # 低于此值整篇一片
-export TEMPLATE_SHARD_MAX_CHARS=24000       # 单片上限
+export TEMPLATE_WHOLE_DOC_MAX_CHARS=6000    # 低于此值整篇一片
+export TEMPLATE_SHARD_MAX_CHARS=6000        # 单片输入上限（超出则拆分）
 export TEMPLATE_CHAR_CHUNK_OVERLAP=500      # 字符块切分重叠
 export TEMPLATE_PLAN_ENABLED=true           # false 时跳过 LLM plan，仅保留确定性分片
 ```
@@ -54,9 +54,9 @@ outline.json + content.md
     ↓
 [planner] 可选 LLM plan → templates/plan.json
     ↓
-[extractor] 逐片 LLM 识别 → 全局 char_start/char_end
+[extractor] 逐片 LLM 提取 → 每模版 markdown 字段为完整正文
     ↓
-[slicer] 机械切片 → templates/*.md
+写入 templates/*.md（直接使用 LLM 输出，不按坐标截取）
     ↓
 [merger] 去重 → templates/index.json (schema v1.1)
 ```
@@ -122,8 +122,8 @@ outline.json + content.md
 | `type_label` | 中文标签，如「承诺书」 |
 | `title` | 模版标题 |
 | `section_path` | 章节路径 |
-| `file` | 相对工作区的 Markdown 路径，如 `templates/commitment-001.md` |
-| `char_start` / `char_end` | content.md 全局锚点 |
+| `file` | 相对工作区的 Markdown 路径（LLM 输出的完整模版正文） |
+| `char_start` / `char_end` | 已弃用，多为 `null` |
 | `confidence` | 0–1 |
 | `extraction_method` | `llm` |
 | `shard_id` | 来源分片 ID（可选） |

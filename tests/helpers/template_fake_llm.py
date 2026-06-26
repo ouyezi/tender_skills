@@ -18,7 +18,7 @@ class TemplateFakeLLM(FakeLLMClient):
         timeout: float | None = None,
     ) -> LLMCompletionResult:
         user = " ".join(str(m.get("content", "")) for m in messages if m.get("role") == "user")
-        if "本片段全局偏移" in user:
+        if "模版正文分片" in user:
             text = self._extract_json
         elif "分片摘要" in user or "shard" in user.lower():
             text = self._plan_json

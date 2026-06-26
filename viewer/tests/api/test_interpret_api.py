@@ -174,3 +174,57 @@ def test_run_template_on_existing_session(viewer_data_dir, pipeline_workspace: P
     body = response.json()
     assert body["session_id"] == session_id
     assert "job_id" in body
+
+
+def test_get_template_markdown(viewer_data_dir) -> None:
+    from datetime import UTC, datetime
+
+    from viewer.deps import get_interpret_session_store, get_settings
+
+    client = TestClient(create_app())
+    settings = get_settings()
+    store = get_interpret_session_store()
+    session_id = "tpl-view"
+    workspace = settings.workspaces_dir / session_id
+    templates_dir = workspace / "templates"
+    templates_dir.mkdir(parents=True)
+    (templates_dir / "authorization-001.md").write_text("# 授权书\n\n本授权书声明…", encoding="utf-8")
+    (templates_dir / "index.json").write_text(
+        """{
+  "schema_version": "1.1",
+  "templates": [{
+    "id": "tpl-001",
+    "type": "authorization",
+    "type_label": "授权书",
+    "title": "法定代表人授权书",
+    "section_path": ["第四章"],
+    "file": "templates/authorization-001.md",
+    "confidence": 0.9,
+    "extraction_method": "llm"
+  }]
+}""",
+        encoding="utf-8",
+    )
+    now = datetime.now(UTC).isoformat()
+    store.add(
+        InterpretSessionRecord(
+            id=session_id,
+            title="demo",
+            workspace_path=str(workspace),
+            source_files=["a.docx"],
+            status="success",
+            created_at=now,
+            opened_at=now,
+        )
+    )
+
+    response = client.get(f"/api/interpret/sessions/{session_id}/templates/tpl-001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "法定代表人授权书"
+    assert "授权书" in data["markdown"]
+
+    result = client.get(f"/api/interpret/sessions/{session_id}/result")
+    assert result.status_code == 200
+    assert result.json()["templates"]["templates"][0]["id"] == "tpl-001"
+    assert result.json()["interpretation"] == {}

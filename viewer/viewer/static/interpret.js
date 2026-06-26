@@ -441,12 +441,25 @@ function renderCards() {
 
     const actions = document.createElement("div");
     actions.className = "card-actions";
+    if (tab.key === "templates" && item.id) {
+      const viewTplBtn = document.createElement("button");
+      viewTplBtn.type = "button";
+      viewTplBtn.textContent = "查看模版";
+      viewTplBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openTemplatePanel(state.sessionId, item.id);
+      });
+      actions.appendChild(viewTplBtn);
+    }
     const nodeId = item._node_id;
     if (nodeId) {
       const viewBtn = document.createElement("button");
       viewBtn.type = "button";
       viewBtn.textContent = "查看原文";
-      viewBtn.addEventListener("click", () => openSourcePanel(state.sessionId, nodeId));
+      viewBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openSourcePanel(state.sessionId, nodeId);
+      });
       actions.appendChild(viewBtn);
 
       const viewerLink = document.createElement("a");
@@ -457,6 +470,10 @@ function renderCards() {
     }
     card.innerHTML = body;
     card.appendChild(actions);
+    if (tab.key === "templates" && item.id) {
+      card.classList.add("result-card-clickable");
+      card.addEventListener("click", () => openTemplatePanel(state.sessionId, item.id));
+    }
     container.appendChild(card);
   }
 }
@@ -629,13 +646,32 @@ function hideProgress() {
   document.getElementById("interpret-progress").hidden = true;
 }
 
-async function openSourcePanel(sessionId, nodeId) {
-  const section = await api(`/api/interpret/sessions/${sessionId}/sections/${nodeId}`);
+function showMarkdownPanel(title, markdown, sessionId) {
   const panel = document.getElementById("source-panel");
   const content = document.getElementById("source-content");
-  const md = rewriteAssetUrls(section.markdown, sessionId);
+  const titleEl = document.getElementById("source-panel-title");
+  titleEl.textContent = title || "原文";
+  const md = rewriteAssetUrls(markdown, sessionId);
   content.innerHTML = marked.parse(md);
   panel.hidden = false;
+}
+
+async function openSourcePanel(sessionId, nodeId) {
+  const section = await api(`/api/interpret/sessions/${sessionId}/sections/${nodeId}`);
+  showMarkdownPanel(section.title || "原文", section.markdown, sessionId);
+}
+
+async function openTemplatePanel(sessionId, templateId) {
+  if (!sessionId || !templateId) {
+    return;
+  }
+  try {
+    const tpl = await api(`/api/interpret/sessions/${sessionId}/templates/${templateId}`);
+    const title = tpl.title || tpl.type_label || "模版";
+    showMarkdownPanel(title, tpl.markdown, sessionId);
+  } catch (err) {
+    setError(err.message || "无法加载模版内容");
+  }
 }
 
 function rewriteAssetUrls(markdown, sessionId) {

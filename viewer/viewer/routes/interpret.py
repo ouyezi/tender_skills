@@ -411,17 +411,51 @@ def get_interpret_result(session_id: str) -> InterpretResultResponse:
     workspace = Path(session.workspace_path)
     interpretation_path = workspace / "interpretation.json"
     templates_path = workspace / "templates" / "index.json"
-    if not interpretation_path.exists():
+    has_interpretation = interpretation_path.is_file()
+    has_templates = templates_path.is_file()
+    if not has_interpretation and not has_templates:
         raise HTTPException(status_code=404, detail="interpretation not found")
-    interpretation = json.loads(interpretation_path.read_text(encoding="utf-8"))
+    interpretation: dict = {}
+    if has_interpretation:
+        interpretation = json.loads(interpretation_path.read_text(encoding="utf-8"))
     templates: dict = {}
-    if templates_path.exists():
+    if has_templates:
         templates = json.loads(templates_path.read_text(encoding="utf-8"))
     return InterpretResultResponse(
         interpretation=interpretation,
         templates=templates,
         source_files=session.source_files,
     )
+
+
+@router.get("/sessions/{session_id}/templates/{template_id}")
+def get_interpret_template(session_id: str, template_id: str) -> dict:
+    session = get_interpret_session_store().get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    workspace = Path(session.workspace_path).resolve()
+    index_path = workspace / "templates" / "index.json"
+    if not index_path.is_file():
+        raise HTTPException(status_code=404, detail="templates not found")
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    entry = next((t for t in index.get("templates", []) if t.get("id") == template_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="template not found")
+    rel_file = entry.get("file")
+    if not rel_file or not isinstance(rel_file, str):
+        raise HTTPException(status_code=404, detail="template file missing")
+    file_path = (workspace / rel_file).resolve()
+    if not str(file_path).startswith(str(workspace)):
+        raise HTTPException(status_code=400, detail="invalid template path")
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="template file not found")
+    return {
+        "id": template_id,
+        "title": entry.get("title", ""),
+        "type_label": entry.get("type_label", ""),
+        "file": rel_file,
+        "markdown": file_path.read_text(encoding="utf-8"),
+    }
 
 
 @router.get("/sessions/{session_id}/outline")
