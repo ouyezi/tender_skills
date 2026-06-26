@@ -9,8 +9,10 @@ def test_api_exports():
         prepare_workspaces,
         render_interpretation_report,
         run_interpret_job,
+        run_template_job,
     )
 
     assert callable(prepare_workspaces)
     assert callable(run_interpret_job)
+    assert callable(run_template_job)
     assert callable(render_interpretation_report)

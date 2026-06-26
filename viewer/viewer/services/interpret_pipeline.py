@@ -30,6 +30,12 @@ _STAGE_LABELS = {
     "chunk": "分块",
 }
 
+_TEMPLATE_STAGE_LABELS = {
+    "template_plan": "规划模版分片",
+    "template_extract": "提取模版",
+    "template_merge": "合并模版",
+}
+
 
 class InterpretPipelineService:
     def __init__(
@@ -151,7 +157,26 @@ class InterpretPipelineService:
             if model_name:
                 _LOGGER.info("interpret_llm_client model=%s", model_name)
 
-            def _interpret_progress(_stage: str, payload: dict) -> None:
+            def _interpret_progress(stage: str, payload: dict) -> None:
+                nonlocal step_total
+                if stage.startswith("template_"):
+                    template_total = int(payload.get("total", 1))
+                    template_current = int(payload.get("current", 0))
+                    template_base = interpret_base + interpret_nodes
+                    expanded_total = template_base + template_total
+                    if expanded_total > step_total:
+                        step_total = expanded_total
+                    step_current = template_base + template_current
+                    self._report(
+                        job_id,
+                        stage="template",
+                        message=_TEMPLATE_STAGE_LABELS.get(stage, "提取模版"),
+                        step_current=min(step_current, step_total - 1),
+                        step_total=step_total,
+                        detail=str(payload.get("detail", "")),
+                        dual_file=dual_file,
+                    )
+                    return
                 seg_current = int(payload.get("current", 0))
                 seg_total = int(payload.get("total", 1))
                 step_current = interpret_base + seg_current
@@ -173,16 +198,6 @@ class InterpretPipelineService:
                 client=client,
                 on_progress=_interpret_progress,
                 setup_logging=True,
-            )
-
-            step = step_total - 1
-            self._report(
-                job_id,
-                stage="template",
-                message="提取模版",
-                step_current=step,
-                step_total=step_total,
-                dual_file=dual_file,
             )
 
             self._jobs.update(
@@ -321,7 +336,26 @@ class InterpretPipelineService:
             if model_name:
                 _LOGGER.info("interpret_llm_client model=%s", model_name)
 
-            def _interpret_progress(_stage: str, payload: dict) -> None:
+            def _interpret_progress(stage: str, payload: dict) -> None:
+                nonlocal step_total
+                if stage.startswith("template_"):
+                    template_total = int(payload.get("total", 1))
+                    template_current = int(payload.get("current", 0))
+                    template_base = interpret_nodes
+                    expanded_total = template_base + template_total
+                    if expanded_total > step_total:
+                        step_total = expanded_total
+                    step_current = template_base + template_current
+                    self._report(
+                        job_id,
+                        stage="template",
+                        message=_TEMPLATE_STAGE_LABELS.get(stage, "提取模版"),
+                        step_current=min(step_current, step_total - 1),
+                        step_total=step_total,
+                        detail=str(payload.get("detail", "")),
+                        dual_file=dual_file,
+                    )
+                    return
                 seg_current = int(payload.get("current", 0))
                 seg_total = int(payload.get("total", 1))
                 step_current = seg_current
@@ -343,14 +377,6 @@ class InterpretPipelineService:
                 client=client,
                 on_progress=_interpret_progress,
                 setup_logging=True,
-            )
-            self._jobs.update(
-                job_id,
-                stage="template",
-                message="提取模版",
-                step_current=step_total - 1,
-                step_total=step_total,
-                dual_file=dual_file,
             )
             self._jobs.update(
                 job_id,

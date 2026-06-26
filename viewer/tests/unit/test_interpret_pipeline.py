@@ -13,7 +13,11 @@ from viewer.services.interpret_session_store import InterpretSessionStore
 
 
 @pytest.mark.asyncio
-async def test_single_file_interpret_pipeline(sample_docx: Path, tmp_path: Path) -> None:
+async def test_single_file_interpret_pipeline(
+    sample_docx: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCR_ENABLED", "false")
+    monkeypatch.setenv("TEMPLATE_PLAN_ENABLED", "false")
     sessions = InterpretSessionStore(tmp_path / "interpret_sessions.json")
     jobs = InterpretJobRegistry()
     session_id = "sess-1"
@@ -50,8 +54,27 @@ async def test_single_file_interpret_pipeline(sample_docx: Path, tmp_path: Path)
             "directory_summary": "目录",
         }
     )
+    extract_json = json.dumps(
+        {
+            "templates": [
+                {
+                    "title": "授权书",
+                    "type": "authorization",
+                    "type_label": "授权书",
+                    "char_start": 0,
+                    "char_end": 20,
+                    "confidence": 0.9,
+                    "source_excerpt": "授权",
+                }
+            ]
+        }
+    )
 
-    fake_llm = InterpretFakeLLM(segment_json=segment_json, overview_json=overview_json)
+    fake_llm = InterpretFakeLLM(
+        segment_json=segment_json,
+        overview_json=overview_json,
+        extract_json=extract_json,
+    )
     service = InterpretPipelineService(
         sessions=sessions,
         jobs=jobs,
@@ -68,6 +91,8 @@ async def test_single_file_interpret_pipeline(sample_docx: Path, tmp_path: Path)
     assert job.status == "done"
     assert (workspace_dir / "interpretation.json").exists()
     assert (workspace_dir / "templates" / "index.json").exists()
+    index_data = json.loads((workspace_dir / "templates" / "index.json").read_text(encoding="utf-8"))
+    assert len(index_data.get("templates", [])) >= 1
 
 
 @pytest.mark.asyncio

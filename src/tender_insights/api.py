@@ -19,6 +19,7 @@ from tender_insights.interpret.models import InterpretationFile
 from tender_insights.interpret.render import render_interpretation_markdown
 from tender_insights.legal.extractor import review_legal_workspace
 from tender_insights.template.extractor import extract_templates_workspace
+from tender_insights.template.models import TemplatesIndexFile
 from tender_insights.gen_catalog.accept import accept_gen_catalog_draft
 from tender_insights.gen_catalog.extractor import gen_catalog_workspace
 
@@ -44,6 +45,19 @@ def interpret_document(
     return interpret_workspace(workspace, client, on_progress=on_progress)
 
 
+def run_template_job(
+    workspace: OutputWorkspace,
+    *,
+    client: LLMClient | None = None,
+    on_progress: Callable[[str, dict], None] | None = None,
+    setup_logging: bool = True,
+) -> TemplatesIndexFile:
+    client = client or create_llm_client_from_env()
+    if setup_logging:
+        setup_interpret_llm_logging(workspace)
+    return extract_templates_workspace(workspace, client, on_progress=on_progress)
+
+
 def run_interpret_job(
     workspace: OutputWorkspace,
     *,
@@ -57,7 +71,12 @@ def run_interpret_job(
         setup_interpret_llm_logging(workspace)
     result = interpret_workspace(workspace, client, on_progress=on_progress)
     if include_template:
-        extract_templates_workspace(workspace, client)
+        run_template_job(
+            workspace,
+            client=client,
+            on_progress=on_progress,
+            setup_logging=False,
+        )
     return result
 
 
