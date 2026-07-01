@@ -27,9 +27,17 @@ def collect_table_assets(
         sidecar = load_table_model(ws, block.table_ref)
         row_count = len(sidecar.logical_rows) or len(sidecar.grid.get("rows", []))
         col_count = sidecar.grid_width
+        slice_ref = sidecar.slice_ref
+        slice_status = sidecar.slice_status
+        slice_byte_size = None
+        if slice_ref and (ws.root / slice_ref).is_file():
+            slice_byte_size = (ws.root / slice_ref).stat().st_size
         entries.append(
             TableManifestEntry(
                 table_ref=block.table_ref,
+                slice_ref=slice_ref,
+                slice_status=slice_status,
+                slice_byte_size=slice_byte_size,
                 source_block_index=block.block_index,
                 layout_type=sidecar.layout_type,
                 row_count=row_count,
@@ -40,7 +48,7 @@ def collect_table_assets(
             )
         )
 
-    manifest = TablesManifest(tables=sorted(entries, key=lambda e: e.source_block_index))
+    manifest = TablesManifest(schema_version="1.1", tables=sorted(entries, key=lambda e: e.source_block_index))
     if write_manifest:
         ws.tables_dir.mkdir(parents=True, exist_ok=True)
         ws.tables_manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
