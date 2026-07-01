@@ -219,4 +219,5 @@ def extract_docx(
     if image_entries:
         manifest = ImagesManifest(images=image_entries)
         workspace.images_manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    collect_table_assets(workspace, write_manifest=True)
     return ExtractResult(image_count=image_count, warnings=all_warnings)
