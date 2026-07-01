@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from doc_chunk.extract.promote_headings import parse_content_heading_line
+from doc_chunk.extract.promote_headings import PromoteHeadingsState
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
 
 _MD_HEADING_RE = re.compile(r"^(#{1,8})[ \t]+(.+?)[ \t#]*$", re.MULTILINE)
@@ -50,8 +50,9 @@ def extract_heading_outline(content_md: str) -> OutlineTree | None:
 def extract_content_heuristic_outline(content_md: str) -> OutlineTree | None:
     nodes: list[OutlineNode] = []
     last_seen_by_level: dict[int, str] = {}
+    promote_state = PromoteHeadingsState()
     for idx, raw_line in enumerate(content_md.splitlines()):
-        parsed = parse_content_heading_line(raw_line)
+        parsed = promote_state.parse(raw_line)
         if parsed is None:
             continue
         level, title = parsed
