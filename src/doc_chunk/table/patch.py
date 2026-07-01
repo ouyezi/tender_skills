@@ -9,6 +9,7 @@ from docx.text.paragraph import Paragraph
 from doc_chunk.convert.table_to_docx import render_sidecar_to_docx
 from doc_chunk.models.table_model import TableSidecar
 from doc_chunk.table.access import load_table_model
+from doc_chunk.table.embed import embed_table_from_slice
 from doc_chunk.table.placeholders import parse_table_ref_from_line
 from doc_chunk.workspace.layout import OutputWorkspace
 
@@ -39,7 +40,21 @@ def _collect_markdown_table_paragraphs(paragraphs: list[Paragraph], start_index:
     return indices
 
 
-def _insert_table_before_paragraph(document: Document, paragraph: Paragraph, sidecar: TableSidecar) -> None:
+def _insert_table_from_sidecar(
+    document: Document,
+    paragraph: Paragraph,
+    sidecar: TableSidecar,
+    ws: OutputWorkspace,
+    result: PatchResult,
+) -> None:
+    if sidecar.slice_status == "ok" and sidecar.slice_ref:
+        slice_path = ws.root / sidecar.slice_ref
+        if slice_path.is_file():
+            try:
+                embed_table_from_slice(document, slice_path, paragraph)
+                return
+            except Exception as exc:
+                result.warnings.append(f"table_embed_fallback:{sidecar.slice_ref}:{exc}")
     table = render_sidecar_to_docx(document, sidecar)
     paragraph._p.addprevious(table._tbl)
 
@@ -73,7 +88,7 @@ def patch_docx_tables(
             continue
         sidecar = load_table_model(ws, ref)
         placeholder = document.paragraphs[placeholder_idx]
-        _insert_table_before_paragraph(document, placeholder, sidecar)
+        _insert_table_from_sidecar(document, placeholder, sidecar, ws, result)
         delete_indices = sorted([placeholder_idx] + md_indices, reverse=True)
         for del_idx in delete_indices:
             p = document.paragraphs[del_idx]
