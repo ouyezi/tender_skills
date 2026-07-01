@@ -23,6 +23,7 @@ class ChunkBlock(BaseModel):
     type: Literal["paragraph", "table", "image"]
     text: str | None = None
     image_ref: str | None = None
+    table_ref: str | None = None
 
 
 class ContentChunk(BaseModel):
