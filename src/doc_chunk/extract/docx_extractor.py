@@ -16,6 +16,7 @@ from doc_chunk.extract.table_extractor import extract_table
 from doc_chunk.extract.table_sidecar import TableSidecarWriter
 from doc_chunk.models.document import ExtractResult
 from doc_chunk.models.images_manifest import ImageManifestEntry, ImagesManifest
+from doc_chunk.table.assets import collect_table_assets
 from doc_chunk.workspace.layout import OutputWorkspace
 
 
