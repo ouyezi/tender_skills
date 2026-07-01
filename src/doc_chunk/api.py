@@ -53,6 +53,7 @@ def _build_manifest(source_path: Path, file_type: str, warnings: list[str]) -> M
             "images_manifest": "images/manifest.json",
             "tables": "tables",
             "tables_index": "tables/index.json",
+            "tables_manifest": "tables/manifest.json",
         },
         warnings=warnings,
     )
