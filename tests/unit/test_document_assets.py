@@ -69,3 +69,12 @@ def test_collect_document_assets_merges_images_and_tables(tmp_path: Path) -> Non
     assert doc.images[0].ref == "images/img.png"
     assert doc.images[0].preview == "img.png"
     assert doc.images[0].meta.get("content_type") == "image/png"
+
+
+def test_export_table_ref_to_docx_bytes(tmp_path: Path) -> None:
+    from doc_chunk.convert.table_export import export_table_ref_to_docx_bytes
+
+    ws = OutputWorkspace.create(tmp_path / "ws-export", overwrite=True)
+    _write_table_sidecar(ws)
+    data = export_table_ref_to_docx_bytes(ws, "tables/t0000.json")
+    assert data[:2] == b"PK"
