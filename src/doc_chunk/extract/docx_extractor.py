@@ -14,6 +14,7 @@ from doc_chunk.extract.docx_numbering import DocxNumberingResolver, merge_list_p
 from doc_chunk.extract.promote_headings import parse_content_heading_line
 from doc_chunk.extract.table_extractor import extract_table
 from doc_chunk.extract.table_sidecar import TableSidecarWriter
+from doc_chunk.extract.table_slice import extract_table_slice
 from doc_chunk.models.document import ExtractResult
 from doc_chunk.models.images_manifest import ImageManifestEntry, ImagesManifest
 from doc_chunk.table.assets import collect_table_assets
@@ -200,7 +201,15 @@ def extract_docx(
             table_ref = None
             if markdown:
                 if sidecar:
-                    table_ref = sidecar_writer.write(sidecar)
+                    slice_ref, slice_status, slice_warnings = extract_table_slice(
+                        table, sidecar.block_index, workspace.root
+                    )
+                    all_warnings.extend(slice_warnings)
+                    table_ref = sidecar_writer.write(
+                        sidecar,
+                        slice_ref=slice_ref,
+                        slice_status=slice_status,
+                    )
                 acc.add_table(markdown, table_ref=table_ref)
             for relationship_id, image_part in _docx_table_image_embeds(table, doc):
                 image_count = _register_docx_image(
