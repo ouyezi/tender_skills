@@ -247,14 +247,51 @@
 
 ---
 
+## tables/manifest.json
+
+表格资产清单，extract 阶段由 `collect_table_assets()` 写入；供 tender_knowledge 适配层注册 UUID（对齐 `images/manifest.json`）。
+
+```json
+{
+  "schema_version": "1.1",
+  "tables": [
+    {
+      "table_ref": "tables/t0003.json",
+      "slice_ref": "tables/t0003.docx",
+      "slice_status": "ok",
+      "slice_byte_size": 18432,
+      "source_block_index": 3,
+      "layout_type": "personnel_dual_row",
+      "row_count": 4,
+      "col_count": 8,
+      "char_start": 1024,
+      "char_end": 1280,
+      "markdown_preview": "| 姓名 | 本项目工作角色 | ..."
+    }
+  ]
+}
+```
+
+**table_ref**：主键，指向 JSON 侧车相对路径。`slice_ref` 指向 mini-docx 原表切片；`slice_status` 为 `ok` | `failed` | `missing`；`slice_byte_size` 在 slice 文件存在时写入字节数。`char_start`/`char_end` 覆盖 `content.md` 中 `<!-- table-ref:... -->` 占位符行及下方 Markdown 表格。
+
+---
+
+## tables/t{NNNN}.docx
+
+单表原表切片（mini-docx），与 `tables/t{NNNN}.json` 同 stem。自包含 OPC 包，含 `w:tbl` 及 styles/theme/numbering/media 闭包依赖。Word 导出与 `patch_docx_tables()` 优先使用此文件。
+
+---
+
 ## tables/t{NNNN}.json
 
 单表侧车，文件名中 `{NNNN}` 为四位零填充的 `block_index`（如 `t0003.json`）。
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "block_index": 3,
+  "slice_ref": "tables/t0003.docx",
+  "slice_status": "ok",
   "layout_type": "personnel_dual_row",
   "grid_width": 4,
   "grid": {
@@ -290,6 +327,10 @@
 ```
 
 **layout_type enum**: `personnel_dual_row` | `simple` | `key_value` | `fallback`
+
+**slice_ref**（schema 1.1，可选）：mini-docx 切片相对路径，与 JSON 同 stem。
+
+**slice_status**（schema 1.1）：`ok` | `failed` | `missing`。旧工作区 schema 1.0 或无切片时为 `missing`。
 
 **grid**：OOXML 物理网格（含 `colspan`/`rowspan`/`vmerge`）；**logical_rows**：合并去重后的逻辑行；**markdown**：写入 `content.md` 的 Markdown；**llm_text**：供 LLM 消费的文本（`substitute_tables_for_llm` 替换用）；**record_groups**/**records**：结构化记录（版式相关）。
 
@@ -371,7 +412,12 @@
 - 无 `asset_id` 映射：`{"type":"image","image_ref":"images/..."}`
 - 有映射（推荐）：`{"type":"image","asset_id":"<uuid>","image_ref":"images/..."}`
 
-工作区 `chunk-*.json` 内 `blocks[]` 仍使用 `image_ref`；`asset_id` 由适配层在落库前通过 `images/manifest.json` 注入 `image_ref_to_asset_id` 映射生成。
+表格块：
+
+- 无映射：`{"type":"table","table_ref":"tables/t0003.json","text":"| ... |"}`
+- 有映射：`{"type":"table","asset_id":"<uuid>","table_ref":"tables/t0003.json","text":"| ... |"}`
+
+工作区 `chunk-*.json` 内 `blocks[]` 仍使用 `image_ref` / `table_ref`；`asset_id` 由适配层在落库前通过 `images/manifest.json` / `tables/manifest.json` 注入映射生成。
 
 ---
 
@@ -384,7 +430,7 @@
 3. 必填字段缺失时解析失败
 4. `level` 超出 1–8 时验证失败
 5. `chunk_id` 链接双向一致（previous/next）
-6. extract 后 `content.blocks.json` 中 table 块的 `table_ref`、`char_start`/`char_end` 与 `tables/` 侧车及 `content.md` 锚点对齐
+6. extract 后 `content.blocks.json` 中 table 块的 `table_ref`、`char_start`/`char_end` 与 `tables/` 侧车及 `content.md` 锚点对齐（含 `<!-- table-ref:... -->` 占位符）
 
 测试路径：`tests/contract/test_workspace_schemas.py`、`tests/contract/test_table_sidecar.py`
 
@@ -396,5 +442,7 @@
 |---------|--------|
 | 1.0 | 初始版本，含 refined outline 字段 |
 | 1.1 | `content.blocks.json` 新增 `table_ref`；新增 `tables/index.json` 与 `tables/t{NNNN}.json` 侧车 |
+| 1.2 | `content.md` 表格块前写入 `<!-- table-ref:... -->`；新增 `tables/manifest.json`；`ChunkBlock.table_ref` |
+| 1.3 | 侧车/manifest schema 1.1 新增 `slice_ref`/`slice_status`；新增 `tables/t{NNNN}.docx` mini-docx 原表切片 |
 
 未来版本 MUST 递增 `schema_version` 并提供读取旧版的兼容层。

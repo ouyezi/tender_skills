@@ -125,3 +125,17 @@ def personnel_dual_row_docx(tmp_path: Path) -> Path:
         table.cell(3, c).text = v
     doc.save(path)
     return path
+
+
+@pytest.fixture
+def sample_docx_with_styled_table(tmp_path: Path) -> Path:
+    path = tmp_path / "styled_table.docx"
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    table.style = "Table Grid"
+    table.cell(0, 0).text = "Header"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "A"
+    table.cell(1, 1).text = "B"
+    doc.save(path)
+    return path

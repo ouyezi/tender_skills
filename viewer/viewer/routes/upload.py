@@ -8,8 +8,9 @@ from doc_chunk.errors import UnsupportedFormatError
 from doc_chunk.extract.detect import detect_file_type
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 
-from viewer.deps import get_job_registry, get_pipeline_service, get_session_store, get_settings
+from viewer.deps import get_job_registry, get_interpret_session_store, get_pipeline_service, get_session_store, get_settings
 from viewer.models import SessionRecord, UploadResponse
+from viewer.services.session_sync import mirror_viewer_session
 
 router = APIRouter(tags=["upload"])
 
@@ -51,6 +52,7 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile) -> Up
         error=None,
     )
     get_session_store().add(record)
+    mirror_viewer_session(record, get_interpret_session_store(), settings)
     get_job_registry().create(job_id, session_id)
 
     service = get_pipeline_service()

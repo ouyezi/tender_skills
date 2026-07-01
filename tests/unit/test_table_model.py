@@ -34,3 +34,40 @@ def test_table_sidecar_roundtrip() -> None:
     )
     parsed = TableSidecar.model_validate_json(sidecar.model_dump_json())
     assert parsed.layout_type == "simple"
+    assert parsed.slice_status == "missing"
+    assert parsed.slice_ref is None
+
+
+def test_table_sidecar_schema_1_1_slice_fields() -> None:
+    sidecar = TableSidecar(
+        schema_version="1.1",
+        block_index=3,
+        slice_ref="tables/t0003.docx",
+        slice_status="ok",
+        layout_type="simple",
+        grid_width=2,
+        grid={"rows": []},
+        logical_rows=[["a", "b"]],
+        markdown="| a | b |",
+        llm_text="table",
+    )
+    parsed = TableSidecar.model_validate_json(sidecar.model_dump_json())
+    assert parsed.schema_version == "1.1"
+    assert parsed.slice_ref == "tables/t0003.docx"
+    assert parsed.slice_status == "ok"
+
+
+def test_table_sidecar_schema_1_0_defaults_missing_slice() -> None:
+    raw = TableSidecar(
+        block_index=0,
+        layout_type="simple",
+        grid_width=1,
+        grid={"rows": []},
+        logical_rows=[],
+        markdown="| a |",
+        llm_text="t",
+    ).model_dump_json()
+    parsed = TableSidecar.model_validate_json(raw)
+    assert parsed.schema_version == "1.0"
+    assert parsed.slice_ref is None
+    assert parsed.slice_status == "missing"

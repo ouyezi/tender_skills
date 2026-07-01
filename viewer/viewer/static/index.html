@@ -34,6 +34,10 @@
     <aside class="outline-aside">
       <div id="outline-meta" class="meta-bar"></div>
       <div id="outline-tree" class="outline-tree"></div>
+      <div class="assets-panel">
+        <div class="assets-panel-header">文档资产</div>
+        <div id="assets-list" class="assets-list muted">—</div>
+      </div>
     </aside>
     <main class="content-main">
       <div id="section-meta" class="meta-bar section-meta-bar" hidden>
@@ -42,6 +46,17 @@
       </div>
       <div id="content-panel" class="content-panel"></div>
     </main>
+  </div>
+
+  <div id="image-preview-modal" class="asset-modal" hidden>
+    <div class="asset-modal-backdrop" id="image-preview-backdrop"></div>
+    <div class="asset-modal-body">
+      <header class="asset-modal-header">
+        <code id="image-preview-ref"></code>
+        <button type="button" id="close-image-preview">关闭</button>
+      </header>
+      <img id="image-preview-img" alt="">
+    </div>
   </div>
 
   <script src="/static/marked.min.js"></script>

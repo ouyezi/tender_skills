@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from doc_chunk.models.table_model import TableSidecar, TablesIndex, TablesIndexEntry
+from doc_chunk.models.table_model import SliceStatus, TableSidecar, TablesIndex, TablesIndexEntry
 from doc_chunk.workspace.layout import OutputWorkspace
 
 
@@ -10,10 +10,23 @@ class TableSidecarWriter:
         self._ws.tables_dir.mkdir(parents=True, exist_ok=True)
         self._entries: list[TablesIndexEntry] = []
 
-    def write(self, sidecar: TableSidecar) -> str:
+    def write(
+        self,
+        sidecar: TableSidecar,
+        *,
+        slice_ref: str | None = None,
+        slice_status: SliceStatus = "missing",
+    ) -> str:
         rel = f"tables/t{sidecar.block_index:04d}.json"
         path = self._ws.root / rel
-        path.write_text(sidecar.model_dump_json(indent=2), encoding="utf-8")
+        payload = sidecar.model_copy(
+            update={
+                "schema_version": "1.1",
+                "slice_ref": slice_ref,
+                "slice_status": slice_status,
+            }
+        )
+        path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
         self._entries.append(TablesIndexEntry(block_index=sidecar.block_index, path=rel))
         return rel
 

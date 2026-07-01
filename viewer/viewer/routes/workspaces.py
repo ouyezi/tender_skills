@@ -6,8 +6,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from viewer.deps import get_session_store
+from viewer.deps import get_interpret_session_store, get_session_store, get_settings
 from viewer.models import OpenWorkspaceRequest, SessionRecord
+from viewer.services.session_sync import mirror_viewer_session
 from viewer.services.workspace import validate_workspace
 
 router = APIRouter(tags=["workspaces"])
@@ -33,4 +34,5 @@ def open_workspace(body: OpenWorkspaceRequest) -> dict:
         error=None,
     )
     get_session_store().add(record)
+    mirror_viewer_session(record, get_interpret_session_store(), get_settings())
     return {"session_id": session_id, "status": "success"}

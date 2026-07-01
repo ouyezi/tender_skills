@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from doc_chunk.models.content_block import ContentBlockRecord, ContentBlocksFile
+from doc_chunk.table.placeholders import format_table_ref_comment
 from doc_chunk.workspace.layout import OutputWorkspace
 
 
@@ -39,8 +40,11 @@ class BlockAccumulator:
 
     def add_table(self, table_md: str, *, table_ref: str | None = None) -> None:
         start = self._cursor
-        self._markdown_parts.append(f"{table_md}\n\n")
-        self._cursor += len(f"{table_md}\n\n")
+        body = f"{table_md}\n\n"
+        if table_ref:
+            body = f"{format_table_ref_comment(table_ref)}\n{body}"
+        self._markdown_parts.append(body)
+        self._cursor += len(body)
         preview = table_md[:120] or None
         self._blocks.append(
             ContentBlockRecord(

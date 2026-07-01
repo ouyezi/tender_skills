@@ -4,6 +4,8 @@ const state = {
   pollTimer: null,
   collapsedNodeIds: new Set(),
   currentSectionMarkdown: null,
+  documentAssets: null,
+  activeAssetRef: null,
 };
 
 async function api(path, options = {}) {
@@ -23,8 +25,19 @@ function rewriteAssetUrls(markdown, sessionId) {
   );
 }
 
+function clearAssetHighlight() {
+  state.activeAssetRef = null;
+  document.querySelectorAll(".asset-row.active").forEach((row) => {
+    row.classList.remove("active");
+  });
+  document.querySelectorAll(".asset-highlight").forEach((el) => {
+    el.classList.remove("asset-highlight");
+  });
+}
+
 function clearSectionView() {
   state.currentSectionMarkdown = null;
+  clearAssetHighlight();
   document.getElementById("content-panel").innerHTML = "";
   const metaBar = document.getElementById("section-meta");
   metaBar.hidden = true;
@@ -68,6 +81,7 @@ async function loadOutline() {
   if (!state.sessionId) {
     document.getElementById("outline-meta").textContent = "";
     document.getElementById("outline-tree").innerHTML = "";
+    document.getElementById("assets-list").textContent = "—";
     return;
   }
   const data = await api(`/api/sessions/${state.sessionId}/outline`);
@@ -77,6 +91,146 @@ async function loadOutline() {
   container.appendChild(renderNodes(data.nodes, 0));
   if (state.selectedNodeId) {
     markTreeSelection(state.selectedNodeId);
+  }
+  await loadDocumentAssets();
+}
+
+async function loadDocumentAssets() {
+  const listEl = document.getElementById("assets-list");
+  if (!state.sessionId) {
+    listEl.textContent = "—";
+    return;
+  }
+  listEl.textContent = "加载中…";
+  try {
+    state.documentAssets = await api(`/api/sessions/${state.sessionId}/document-assets`);
+    renderAssetsList(state.documentAssets);
+  } catch (err) {
+    listEl.textContent = err.message || "加载失败";
+  }
+}
+
+function renderAssetsList(data) {
+  const listEl = document.getElementById("assets-list");
+  listEl.innerHTML = "";
+  const groups = [
+    ["图片", data.images || []],
+    ["表格", data.tables || []],
+  ];
+  let any = false;
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    any = true;
+    const details = document.createElement("details");
+    details.className = "asset-group";
+    details.open = true;
+    const summary = document.createElement("summary");
+    summary.textContent = `${label} (${items.length})`;
+    details.appendChild(summary);
+    for (const item of items) {
+      details.appendChild(buildAssetRow(item));
+    }
+    listEl.appendChild(details);
+  }
+  if (!any) {
+    listEl.textContent = "暂无图片/表格资产";
+  }
+}
+
+function buildAssetRow(item) {
+  const row = document.createElement("div");
+  row.className = "asset-row";
+  row.dataset.ref = item.ref;
+  if (state.activeAssetRef === item.ref) {
+    row.classList.add("active");
+  }
+
+  const main = document.createElement("div");
+  main.className = "asset-row-main";
+
+  const refEl = document.createElement("span");
+  refEl.className = "asset-ref";
+  refEl.textContent = item.ref;
+  refEl.title = item.ref;
+  main.appendChild(refEl);
+
+  const detailBtn = document.createElement("button");
+  detailBtn.type = "button";
+  detailBtn.className = "asset-detail-btn";
+  detailBtn.textContent = "查看详情";
+  detailBtn.onclick = (event) => {
+    event.stopPropagation();
+    if (item.asset_type === "image") {
+      openImagePreview(item.ref);
+    } else {
+      downloadTableDocx(item.ref);
+    }
+  };
+  main.appendChild(detailBtn);
+  row.appendChild(main);
+
+  if (item.preview) {
+    const preview = document.createElement("div");
+    preview.className = "asset-preview";
+    preview.textContent = item.preview;
+    preview.title = item.preview;
+    row.appendChild(preview);
+  }
+
+  row.onclick = () => {
+    focusAssetInDocument(item).catch(console.error);
+  };
+  return row;
+}
+
+function openImagePreview(ref) {
+  const modal = document.getElementById("image-preview-modal");
+  document.getElementById("image-preview-ref").textContent = ref;
+  document.getElementById("image-preview-img").src =
+    `/api/sessions/${state.sessionId}/assets/${ref}`;
+  modal.hidden = false;
+}
+
+function closeImagePreview() {
+  document.getElementById("image-preview-modal").hidden = true;
+  document.getElementById("image-preview-img").src = "";
+}
+
+function downloadTableDocx(ref) {
+  const url = `/api/sessions/${state.sessionId}/tables/${encodeURIComponent(ref)}/export.docx`;
+  window.location.assign(url);
+}
+
+async function focusAssetInDocument(asset) {
+  if (!asset.outline_node_id || asset.char_start == null) {
+    setProgress("无法定位该资产");
+    return;
+  }
+  state.activeAssetRef = asset.ref;
+  document.querySelectorAll(".asset-row").forEach((row) => {
+    row.classList.toggle("active", row.dataset.ref === asset.ref);
+  });
+  if (state.selectedNodeId !== asset.outline_node_id) {
+    await selectNode(asset.outline_node_id, { preserveAssetFocus: true });
+  }
+  highlightAssetInContent(asset);
+  setProgress("", true);
+}
+
+function highlightAssetInContent(asset) {
+  document.querySelectorAll(".asset-highlight").forEach((el) => {
+    el.classList.remove("asset-highlight");
+  });
+  const panel = document.getElementById("content-panel");
+  let target = null;
+  if (asset.asset_type === "image") {
+    target = panel.querySelector(`img[src*="${asset.ref}"]`);
+  } else {
+    target = panel.querySelector("table");
+  }
+  if (target) {
+    target.classList.add("asset-highlight");
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 }
 
@@ -139,7 +293,10 @@ function renderNodes(nodes, depth) {
   return ul;
 }
 
-async function selectNode(nodeId) {
+async function selectNode(nodeId, options = {}) {
+  if (!options.preserveAssetFocus) {
+    clearAssetHighlight();
+  }
   state.selectedNodeId = nodeId;
   markTreeSelection(nodeId);
   const section = await api(`/api/sessions/${state.sessionId}/sections/${nodeId}`);
@@ -296,6 +453,7 @@ document.getElementById("delete-session-btn").addEventListener("click", async ()
     clearSectionView();
     document.getElementById("outline-meta").textContent = "";
     document.getElementById("outline-tree").innerHTML = "";
+    document.getElementById("assets-list").textContent = "—";
     setProgress("", true);
     await refreshSessions();
   } catch (err) {
@@ -307,6 +465,9 @@ document.getElementById("delete-session-btn").addEventListener("click", async ()
 document.getElementById("copy-markdown-btn").addEventListener("click", () => {
   copySectionMarkdown().catch(console.error);
 });
+
+document.getElementById("close-image-preview").addEventListener("click", closeImagePreview);
+document.getElementById("image-preview-backdrop").addEventListener("click", closeImagePreview);
 
 async function bootstrapFromUrl() {
   const params = new URLSearchParams(window.location.search);

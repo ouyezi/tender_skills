@@ -79,6 +79,7 @@ INTERPRET_LOG_PROMPTS=1 INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts python 
 | 会话历史 | 本机记录最近 20 条处理记录，可快速切换 |
 | Outline 树 | 左侧展示 1–8 级章节目录；`needs_review` 节点有警告标识；有子节点的父级可点击 ▸/▾ 展开/收起 |
 | 章节 Markdown | 右侧按 outline 字符锚点从 `content.md` 截取并渲染 |
+| 文档资产 | 左侧 outline 下方列出全文档图片/表格（引用 ID）；可查看详情、点击跳转章节并高亮 |
 | 图片代理 | 工作区 `images/` 等资源通过 API 加载，不直接暴露文件路径 |
 | Pipeline 进度 | 上传后轮询 job 状态，显示 extract / outline / tree / chunk 阶段 |
 | **招标解读** | `/interpret` 页：上传 1～2 个招标文件 → **提取概要**（`brief`）或 **开始解读** → 分类 Tab 展示（含「概要」Tab） |
@@ -135,6 +136,8 @@ INTERPRET_LOG_PROMPTS=1 INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts python 
 | `DELETE` | `/api/sessions/{id}` | 从索引移除（不删除工作区文件） |
 | `GET` | `/api/sessions/{id}/outline` | 嵌套 outline 树 JSON |
 | `GET` | `/api/sessions/{id}/sections/{node_id}` | 章节 Markdown 片段 |
+| `GET` | `/api/sessions/{id}/document-assets` | 全文档图片/表格资产列表（含 `outline_node_id`） |
+| `GET` | `/api/sessions/{id}/tables/{table_ref}/export.docx` | 下载表格 Word（由侧车即时渲染） |
 | `GET` | `/api/sessions/{id}/assets/{path}` | 代理工作区静态资源（如 `images/xxx.png`） |
 | `GET` | `/api/jobs/{job_id}` | pipeline 任务状态与进度 |
 | `GET` | `/interpret` | 招标解读页 |

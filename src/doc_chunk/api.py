@@ -53,6 +53,7 @@ def _build_manifest(source_path: Path, file_type: str, warnings: list[str]) -> M
             "images_manifest": "images/manifest.json",
             "tables": "tables",
             "tables_index": "tables/index.json",
+            "tables_manifest": "tables/manifest.json",
         },
         warnings=warnings,
     )
@@ -464,12 +465,13 @@ def _run_single_pipeline(
     overwrite: bool,
     skip_refine: bool,
     skip_enrich: bool,
+    promote_headings: Literal["off", "auto"],
     refine_instruction: str | None,
     max_tokens: int,
     on_progress: Callable[[str, dict], None] | None,
 ) -> Manifest:
     _safe_progress(on_progress, "extract", {"message": "extracting document", "current": 0, "total": 1, "input": str(input_path), "output": str(output_dir)})
-    manifest = extract_file(input_path, output_dir, overwrite=overwrite)
+    manifest = extract_file(input_path, output_dir, overwrite=overwrite, promote_headings=promote_headings)
     _safe_progress(on_progress, "outline", {"message": "building outline", "current": 0, "total": 1, "workspace": str(output_dir)})
     extract_outline(output_dir)
     _safe_progress(on_progress, "tree", {"message": "building document tree", "current": 0, "total": 1, "workspace": str(output_dir)})
@@ -500,6 +502,7 @@ def run_pipeline(
     overwrite: bool = False,
     skip_refine: bool = True,
     skip_enrich: bool = False,
+    promote_headings: Literal["off", "auto"] = "off",
     refine_instruction: str | None = None,
     max_tokens: int = 20_000,
     on_progress: Callable[[str, dict], None] | None = None,
@@ -522,6 +525,7 @@ def run_pipeline(
                     overwrite=overwrite,
                     skip_refine=skip_refine,
                     skip_enrich=skip_enrich,
+                    promote_headings=promote_headings,
                     refine_instruction=refine_instruction,
                     max_tokens=max_tokens,
                     on_progress=on_progress,
@@ -544,6 +548,7 @@ def run_pipeline(
             overwrite=overwrite,
             skip_refine=skip_refine,
             skip_enrich=skip_enrich,
+            promote_headings=promote_headings,
             refine_instruction=refine_instruction,
             max_tokens=max_tokens,
             on_progress=on_progress,
