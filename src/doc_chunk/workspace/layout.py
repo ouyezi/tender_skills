@@ -91,3 +91,7 @@ class OutputWorkspace:
     @property
     def tables_index_path(self) -> Path:
         return self.tables_dir / "index.json"
+
+    @property
+    def tables_manifest_path(self) -> Path:
+        return self.tables_dir / "manifest.json"
