@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from docx.document import Document as DocxDocument
 from docx.oxml.ns import qn
+from docx.oxml.parser import parse_xml
+from docx.opc.part import XmlPart
 from docx.parts.document import DocumentPart
 from lxml.etree import _Element as OxmlElement
 
@@ -22,7 +24,11 @@ def graft_style_blobs(source_doc: DocxDocument, dest_doc: DocxDocument) -> None:
         src_part = src_by_name.get(part.partname)
         if src_part is None or not _is_style_related_part(part.partname):
             continue
-        part._blob = src_part.blob
+        if isinstance(part, XmlPart):
+            # XmlPart.blob serializes from _element; assigning _blob alone is ignored on save.
+            part._element = parse_xml(src_part.blob)
+        else:
+            part._blob = src_part.blob
 
 
 def remap_embed_relationships(
