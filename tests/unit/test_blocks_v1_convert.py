@@ -33,3 +33,26 @@ def test_blocks_to_v1_json_image_without_mapping() -> None:
     block = json.loads(payload)["blocks"][0]
     assert block == {"type": "image", "image_ref": "images/a.png"}
     assert "asset_id" not in block
+
+
+def test_blocks_to_v1_json_table_with_asset_mapping() -> None:
+    payload = blocks_to_v1_json(
+        [ChunkBlock(type="table", text="| a |", table_ref="tables/t0000.json")],
+        table_ref_to_asset_id={"tables/t0000.json": "uuid-table-1"},
+    )
+    block = json.loads(payload)["blocks"][0]
+    assert block == {
+        "type": "table",
+        "asset_id": "uuid-table-1",
+        "table_ref": "tables/t0000.json",
+        "text": "| a |",
+    }
+
+
+def test_blocks_to_v1_json_table_without_mapping() -> None:
+    payload = blocks_to_v1_json(
+        [ChunkBlock(type="table", text="| a |", table_ref="tables/t0000.json")],
+    )
+    block = json.loads(payload)["blocks"][0]
+    assert block["table_ref"] == "tables/t0000.json"
+    assert "asset_id" not in block
