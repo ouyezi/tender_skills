@@ -6,6 +6,7 @@ from pathlib import Path
 from doc_chunk.models.content_block import ContentBlocksFile
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
 from doc_chunk.outline.anchor_enricher import enrich_outline_anchors
+from doc_chunk.outline.continuity import normalize_outline_cn_continuity
 from doc_chunk.outline.heading_heuristic import (
     extract_content_heuristic_outline,
     extract_heading_outline,
@@ -63,6 +64,9 @@ def build_outline_from_workspace(workspace: OutputWorkspace, source_path: Path) 
             workspace.content_blocks_path.read_text(encoding="utf-8")
         )
         tree = enrich_outline_anchors(tree, blocks, content_md=content_md)
+
+    if tree.strategy in {"heading_heuristic", "toc", "content_heuristic"}:
+        tree = normalize_outline_cn_continuity(tree, content_md=content_md)
 
     _write_outline(workspace, tree)
     return tree

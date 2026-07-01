@@ -11,7 +11,7 @@ from typing import Literal
 
 from doc_chunk.extract.block_index import BlockAccumulator, write_accumulator_markdown, write_content_blocks
 from doc_chunk.extract.docx_numbering import DocxNumberingResolver, merge_list_prefix
-from doc_chunk.extract.promote_headings import parse_content_heading_line
+from doc_chunk.extract.promote_headings import PromoteHeadingsState, parse_content_heading_line
 from doc_chunk.extract.table_extractor import extract_table
 from doc_chunk.extract.table_sidecar import TableSidecarWriter
 from doc_chunk.extract.table_slice import extract_table_slice
@@ -161,6 +161,7 @@ def extract_docx(
     image_entries: list[ImageManifestEntry] = []
     relationship_to_image_ref: dict[str, str] = {}
     all_warnings: list[str] = []
+    promote_state = PromoteHeadingsState()
 
     for element in doc.element.body.iterchildren():
         if element.tag.endswith("}p"):
@@ -174,7 +175,7 @@ def extract_docx(
                 if level is not None:
                     acc.add_heading(level, text)
                 elif promote_headings == "auto":
-                    parsed = parse_content_heading_line(text)
+                    parsed = promote_state.parse(text)
                     if parsed is not None:
                         acc.add_heading(parsed[0], parsed[1])
                     else:
