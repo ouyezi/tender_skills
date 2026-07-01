@@ -253,10 +253,13 @@
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "tables": [
     {
       "table_ref": "tables/t0003.json",
+      "slice_ref": "tables/t0003.docx",
+      "slice_status": "ok",
+      "slice_byte_size": 18432,
       "source_block_index": 3,
       "layout_type": "personnel_dual_row",
       "row_count": 4,
@@ -269,7 +272,13 @@
 }
 ```
 
-**table_ref**：主键，指向侧车相对路径。`char_start`/`char_end` 覆盖 `content.md` 中 `<!-- table-ref:... -->` 占位符行及下方 Markdown 表格。
+**table_ref**：主键，指向 JSON 侧车相对路径。`slice_ref` 指向 mini-docx 原表切片；`slice_status` 为 `ok` | `failed` | `missing`；`slice_byte_size` 在 slice 文件存在时写入字节数。`char_start`/`char_end` 覆盖 `content.md` 中 `<!-- table-ref:... -->` 占位符行及下方 Markdown 表格。
+
+---
+
+## tables/t{NNNN}.docx
+
+单表原表切片（mini-docx），与 `tables/t{NNNN}.json` 同 stem。自包含 OPC 包，含 `w:tbl` 及 styles/theme/numbering/media 闭包依赖。Word 导出与 `patch_docx_tables()` 优先使用此文件。
 
 ---
 
@@ -279,8 +288,10 @@
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "block_index": 3,
+  "slice_ref": "tables/t0003.docx",
+  "slice_status": "ok",
   "layout_type": "personnel_dual_row",
   "grid_width": 4,
   "grid": {
@@ -316,6 +327,10 @@
 ```
 
 **layout_type enum**: `personnel_dual_row` | `simple` | `key_value` | `fallback`
+
+**slice_ref**（schema 1.1，可选）：mini-docx 切片相对路径，与 JSON 同 stem。
+
+**slice_status**（schema 1.1）：`ok` | `failed` | `missing`。旧工作区 schema 1.0 或无切片时为 `missing`。
 
 **grid**：OOXML 物理网格（含 `colspan`/`rowspan`/`vmerge`）；**logical_rows**：合并去重后的逻辑行；**markdown**：写入 `content.md` 的 Markdown；**llm_text**：供 LLM 消费的文本（`substitute_tables_for_llm` 替换用）；**record_groups**/**records**：结构化记录（版式相关）。
 
@@ -428,5 +443,6 @@
 | 1.0 | 初始版本，含 refined outline 字段 |
 | 1.1 | `content.blocks.json` 新增 `table_ref`；新增 `tables/index.json` 与 `tables/t{NNNN}.json` 侧车 |
 | 1.2 | `content.md` 表格块前写入 `<!-- table-ref:... -->`；新增 `tables/manifest.json`；`ChunkBlock.table_ref` |
+| 1.3 | 侧车/manifest schema 1.1 新增 `slice_ref`/`slice_status`；新增 `tables/t{NNNN}.docx` mini-docx 原表切片 |
 
 未来版本 MUST 递增 `schema_version` 并提供读取旧版的兼容层。
