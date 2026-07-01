@@ -12,6 +12,7 @@ from viewer.models import InterpretSessionRecord, SessionRecord
 def test_list_and_get_sessions(viewer_data_dir) -> None:
     client = TestClient(create_app())
     store = get_session_store()
+    interpret_store = get_interpret_session_store()
     now = datetime.now(UTC).isoformat()
     store.add(
         SessionRecord(
@@ -32,6 +33,21 @@ def test_list_and_get_sessions(viewer_data_dir) -> None:
     detail = client.get("/api/sessions/s1")
     assert detail.status_code == 200
     assert detail.json()["title"] == "demo"
+
+    interpret_store.add(
+        InterpretSessionRecord(
+            id="interpret-only",
+            title="interpret.docx",
+            workspace_path="/tmp/ws2",
+            source_files=["interpret.docx"],
+            status="success",
+            created_at=now,
+            opened_at=now,
+        )
+    )
+    merged = client.get("/api/sessions")
+    assert merged.status_code == 200
+    assert {session["id"] for session in merged.json()} == {"s1", "interpret-only"}
 
 
 def test_delete_session_removes_files_and_records(viewer_data_dir) -> None:

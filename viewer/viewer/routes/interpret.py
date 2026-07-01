@@ -29,6 +29,12 @@ from viewer.services.outline_tree import build_outline_response
 from viewer.services.interpret_inputs import resolve_interpret_input_paths
 from viewer.services.section_slice import slice_section
 from viewer.services.session_cleanup import delete_session_fully
+from viewer.services.session_sync import (
+    list_merged_interpret_sessions,
+    mirror_interpret_session,
+    resolve_interpret_session,
+    sync_session_status,
+)
 from viewer.services.workspace import validate_workspace
 
 router = APIRouter(prefix="/interpret", tags=["interpret"])
@@ -52,14 +58,26 @@ async def _save_upload(upload: UploadFile, dest: Path) -> None:
 
 
 def _load_interpret_workspace(session_id: str) -> Path:
-    session = get_interpret_session_store().get(session_id)
+    settings = get_settings()
+    session = resolve_interpret_session(
+        session_id,
+        viewer_store=get_session_store(),
+        interpret_store=get_interpret_session_store(),
+        settings=settings,
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return validate_workspace(Path(session.workspace_path))
 
 
 def _get_session_or_404(session_id: str) -> InterpretSessionRecord:
-    session = get_interpret_session_store().get(session_id)
+    settings = get_settings()
+    session = resolve_interpret_session(
+        session_id,
+        viewer_store=get_session_store(),
+        interpret_store=get_interpret_session_store(),
+        settings=settings,
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return session
@@ -83,8 +101,11 @@ def _workspace_is_ready(workspace_dir: Path) -> bool:
 
 
 def _mark_session_running(session_id: str) -> None:
-    get_interpret_session_store().update(
+    sync_session_status(
         session_id,
+        viewer_store=get_session_store(),
+        interpret_store=get_interpret_session_store(),
+        settings=get_settings(),
         status="running",
         error=None,
         opened_at=datetime.now(UTC).isoformat(),
@@ -230,6 +251,7 @@ async def _enqueue_upload_job(
         error=None,
     )
     get_interpret_session_store().add(record)
+    mirror_interpret_session(record, get_session_store())
     get_interpret_job_registry().create(
         job_id,
         session_id,
@@ -313,9 +335,7 @@ def get_interpret_job(job_id: str) -> dict:
 
 @router.get("/sessions/{session_id}/job")
 def get_interpret_session_job(session_id: str) -> dict:
-    session = get_interpret_session_store().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session not found")
+    _get_session_or_404(session_id)
     job = get_interpret_job_registry().get_latest_for_session(session_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -324,14 +344,18 @@ def get_interpret_session_job(session_id: str) -> dict:
 
 @router.get("/sessions")
 def list_interpret_sessions() -> list[dict]:
-    return [s.model_dump() for s in get_interpret_session_store().list_sessions()]
+    settings = get_settings()
+    sessions = list_merged_interpret_sessions(
+        get_session_store(),
+        get_interpret_session_store(),
+        settings,
+    )
+    return [s.model_dump() for s in sessions]
 
 
 @router.get("/sessions/{session_id}")
 def get_interpret_session(session_id: str) -> dict:
-    session = get_interpret_session_store().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session not found")
+    session = _get_session_or_404(session_id)
     return session.model_dump()
 
 
@@ -419,9 +443,7 @@ def _read_llm_calls(workspace: Path) -> list[dict]:
 
 @router.get("/sessions/{session_id}/llm-calls")
 def get_interpret_llm_calls(session_id: str) -> list[dict]:
-    session = get_interpret_session_store().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session not found")
+    session = _get_session_or_404(session_id)
     workspace = Path(session.workspace_path)
     if not workspace.is_dir():
         return []
@@ -430,9 +452,7 @@ def get_interpret_llm_calls(session_id: str) -> list[dict]:
 
 @router.get("/sessions/{session_id}/brief")
 def get_interpret_brief(session_id: str) -> dict:
-    session = get_interpret_session_store().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session not found")
+    session = _get_session_or_404(session_id)
     brief_path = Path(session.workspace_path) / "tender_brief.json"
     if not brief_path.exists():
         raise HTTPException(status_code=404, detail="tender brief not found")
@@ -441,9 +461,7 @@ def get_interpret_brief(session_id: str) -> dict:
 
 @router.get("/sessions/{session_id}/result", response_model=InterpretResultResponse)
 def get_interpret_result(session_id: str) -> InterpretResultResponse:
-    session = get_interpret_session_store().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session not found")
+    session = _get_session_or_404(session_id)
     workspace = Path(session.workspace_path)
     interpretation_path = workspace / "interpretation.json"
     templates_path = workspace / "templates" / "index.json"
@@ -466,9 +484,7 @@ def get_interpret_result(session_id: str) -> InterpretResultResponse:
 
 @router.get("/sessions/{session_id}/templates/{template_id}")
 def get_interpret_template(session_id: str, template_id: str) -> dict:
-    session = get_interpret_session_store().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session not found")
+    session = _get_session_or_404(session_id)
     workspace = Path(session.workspace_path).resolve()
     index_path = workspace / "templates" / "index.json"
     if not index_path.is_file():

@@ -17,18 +17,33 @@ from viewer.deps import (
 from viewer.models import UploadResponse
 from viewer.services.reextract import resolve_reextract_input
 from viewer.services.session_cleanup import delete_session_fully
+from viewer.services.session_sync import (
+    list_merged_viewer_sessions,
+    resolve_viewer_session,
+    sync_session_status,
+)
 
 router = APIRouter(tags=["sessions"])
 
 
 @router.get("/sessions")
 def list_sessions() -> list[dict]:
-    return [s.model_dump() for s in get_session_store().list_sessions()]
+    settings = get_settings()
+    sessions = list_merged_viewer_sessions(
+        get_session_store(),
+        get_interpret_session_store(),
+        settings,
+    )
+    return [s.model_dump() for s in sessions]
 
 
 @router.get("/sessions/{session_id}")
 def get_session(session_id: str) -> dict:
-    session = get_session_store().get(session_id)
+    session = resolve_viewer_session(
+        session_id,
+        viewer_store=get_session_store(),
+        interpret_store=get_interpret_session_store(),
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return session.model_dump()
@@ -53,11 +68,16 @@ def delete_session(session_id: str) -> dict:
 @router.post("/sessions/{session_id}/reextract", response_model=UploadResponse)
 def reextract_session(session_id: str, background_tasks: BackgroundTasks) -> UploadResponse:
     store = get_session_store()
-    session = store.get(session_id)
+    interpret_store = get_interpret_session_store()
+    settings = get_settings()
+    session = resolve_viewer_session(
+        session_id,
+        viewer_store=store,
+        interpret_store=interpret_store,
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
 
-    settings = get_settings()
     try:
         input_path = resolve_reextract_input(session, settings)
     except FileNotFoundError as exc:
@@ -65,7 +85,15 @@ def reextract_session(session_id: str, background_tasks: BackgroundTasks) -> Upl
 
     job_id = str(uuid.uuid4())
     workspace_dir = Path(session.workspace_path)
-    store.update(session_id, status="running", error=None, opened_at=datetime.now(UTC).isoformat())
+    sync_session_status(
+        session_id,
+        viewer_store=store,
+        interpret_store=get_interpret_session_store(),
+        settings=settings,
+        status="running",
+        error=None,
+        opened_at=datetime.now(UTC).isoformat(),
+    )
     get_job_registry().create(job_id, session_id)
 
     background_tasks.add_task(

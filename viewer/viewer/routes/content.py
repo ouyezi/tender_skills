@@ -7,16 +7,21 @@ from fastapi.responses import FileResponse
 
 from doc_chunk.models.outline import OutlineTree
 
-from viewer.deps import get_session_store
+from viewer.deps import get_interpret_session_store, get_session_store
 from viewer.services.outline_tree import build_outline_response
 from viewer.services.section_slice import slice_section
+from viewer.services.session_sync import resolve_viewer_session
 from viewer.services.workspace import validate_workspace
 
 router = APIRouter(tags=["content"])
 
 
 def _load_workspace(session_id: str) -> Path:
-    session = get_session_store().get(session_id)
+    session = resolve_viewer_session(
+        session_id,
+        viewer_store=get_session_store(),
+        interpret_store=get_interpret_session_store(),
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return validate_workspace(Path(session.workspace_path))

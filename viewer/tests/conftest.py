@@ -27,6 +27,23 @@ def sample_docx(tmp_path: Path) -> Path:
 @pytest.fixture
 def viewer_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("DOC_CHUNK_VIEWER_DATA", str(tmp_path))
+    from viewer.deps import (
+        get_interpret_job_registry,
+        get_interpret_pipeline_service,
+        get_interpret_session_store,
+        get_job_registry,
+        get_pipeline_service,
+        get_session_store,
+        get_settings,
+    )
+
+    get_settings.cache_clear()
+    get_session_store.cache_clear()
+    get_interpret_session_store.cache_clear()
+    get_job_registry.cache_clear()
+    get_interpret_job_registry.cache_clear()
+    get_pipeline_service.cache_clear()
+    get_interpret_pipeline_service.cache_clear()
     return tmp_path
 
 

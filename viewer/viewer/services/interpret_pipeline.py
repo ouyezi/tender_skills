@@ -19,10 +19,11 @@ from tender_insights.common.content_source import prepare_interpret_source
 from tender_insights.common.segment_planner import plan_segments
 from tender_insights.config import InsightsConfig
 
-from viewer.models import SessionRecord
+from viewer.config import ViewerSettings
 from viewer.services.interpret_job_registry import InterpretJobRegistry
 from viewer.services.interpret_session_store import InterpretSessionStore
 from viewer.services.session_store import SessionStore
+from viewer.services.session_sync import sync_session_status
 
 _PIPELINE_SUBSTEPS = 4
 _LOGGER = logging.getLogger("viewer.interpret")
@@ -55,6 +56,22 @@ class InterpretPipelineService:
         self._jobs = jobs
         self._viewer_sessions = viewer_sessions
         self._llm_client_factory = llm_client_factory or create_llm_client_from_env
+        self._settings = ViewerSettings.load()
+
+    def _update_session_status(self, session_id: str, **fields: object):
+        if self._viewer_sessions is not None:
+            sync_session_status(
+                session_id,
+                viewer_store=self._viewer_sessions,
+                interpret_store=self._sessions,
+                settings=self._settings,
+                **fields,
+            )
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise KeyError(session_id)
+            return session
+        return self._sessions.update(session_id, **fields)
 
     def _count_interpret_nodes(self, workspace_dir: Path) -> int:
         ws = OutputWorkspace.open_existing(workspace_dir)
@@ -216,23 +233,7 @@ class InterpretPipelineService:
                 detail="",
                 dual_file=dual_file,
             )
-            session = self._sessions.update(session_id, status="success", error=None)
-            if self._viewer_sessions is not None:
-                from datetime import UTC, datetime
-
-                now = datetime.now(UTC).isoformat()
-                self._viewer_sessions.add(
-                    SessionRecord(
-                        id=session_id,
-                        title=session.title,
-                        workspace_path=str(workspace_dir),
-                        source_type="upload",
-                        status="success",
-                        created_at=session.created_at,
-                        opened_at=now,
-                        error=None,
-                    )
-                )
+            self._update_session_status(session_id, status="success", error=None)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             self._jobs.update(
@@ -243,7 +244,7 @@ class InterpretPipelineService:
                 error=message,
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="failed", error=message)
+            self._update_session_status(session_id, status="failed", error=message)
 
     async def run_brief_on_workspace(
         self,
@@ -302,7 +303,7 @@ class InterpretPipelineService:
                 detail="",
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="success", error=None)
+            self._update_session_status(session_id, status="success", error=None)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             self._jobs.update(
@@ -313,7 +314,7 @@ class InterpretPipelineService:
                 error=message,
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="failed", error=message)
+            self._update_session_status(session_id, status="failed", error=message)
 
     async def run_interpret_on_workspace(
         self,
@@ -394,23 +395,7 @@ class InterpretPipelineService:
                 detail="",
                 dual_file=dual_file,
             )
-            session = self._sessions.update(session_id, status="success", error=None)
-            if self._viewer_sessions is not None:
-                from datetime import UTC, datetime
-
-                now = datetime.now(UTC).isoformat()
-                self._viewer_sessions.add(
-                    SessionRecord(
-                        id=session_id,
-                        title=session.title,
-                        workspace_path=str(workspace_dir),
-                        source_type="upload",
-                        status="success",
-                        created_at=session.created_at,
-                        opened_at=now,
-                        error=None,
-                    )
-                )
+            self._update_session_status(session_id, status="success", error=None)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             self._jobs.update(
@@ -421,7 +406,7 @@ class InterpretPipelineService:
                 error=message,
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="failed", error=message)
+            self._update_session_status(session_id, status="failed", error=message)
 
     async def run_brief_job(
         self,
@@ -523,23 +508,7 @@ class InterpretPipelineService:
                 detail="",
                 dual_file=dual_file,
             )
-            session = self._sessions.update(session_id, status="success", error=None)
-            if self._viewer_sessions is not None:
-                from datetime import UTC, datetime
-
-                now = datetime.now(UTC).isoformat()
-                self._viewer_sessions.add(
-                    SessionRecord(
-                        id=session_id,
-                        title=session.title,
-                        workspace_path=str(workspace_dir),
-                        source_type="upload",
-                        status="success",
-                        created_at=session.created_at,
-                        opened_at=now,
-                        error=None,
-                    )
-                )
+            self._update_session_status(session_id, status="success", error=None)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             self._jobs.update(
@@ -550,7 +519,7 @@ class InterpretPipelineService:
                 error=message,
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="failed", error=message)
+            self._update_session_status(session_id, status="failed", error=message)
 
     async def run_template_on_workspace(
         self,
@@ -610,7 +579,7 @@ class InterpretPipelineService:
                 detail="",
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="success", error=None)
+            self._update_session_status(session_id, status="success", error=None)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             self._jobs.update(
@@ -621,7 +590,7 @@ class InterpretPipelineService:
                 error=message,
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="failed", error=message)
+            self._update_session_status(session_id, status="failed", error=message)
 
     async def run_template_job(
         self,
@@ -726,23 +695,7 @@ class InterpretPipelineService:
                 detail="",
                 dual_file=dual_file,
             )
-            session = self._sessions.update(session_id, status="success", error=None)
-            if self._viewer_sessions is not None:
-                from datetime import UTC, datetime
-
-                now = datetime.now(UTC).isoformat()
-                self._viewer_sessions.add(
-                    SessionRecord(
-                        id=session_id,
-                        title=session.title,
-                        workspace_path=str(workspace_dir),
-                        source_type="upload",
-                        status="success",
-                        created_at=session.created_at,
-                        opened_at=now,
-                        error=None,
-                    )
-                )
+            self._update_session_status(session_id, status="success", error=None)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             self._jobs.update(
@@ -753,4 +706,4 @@ class InterpretPipelineService:
                 error=message,
                 dual_file=dual_file,
             )
-            self._sessions.update(session_id, status="failed", error=message)
+            self._update_session_status(session_id, status="failed", error=message)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from viewer.main import create_app
-from viewer.models import InterpretSessionRecord
+from viewer.models import InterpretSessionRecord, SessionRecord
 
 
 def test_interpret_page_served() -> None:
@@ -228,3 +228,27 @@ def test_get_template_markdown(viewer_data_dir) -> None:
     assert result.status_code == 200
     assert result.json()["templates"]["templates"][0]["id"] == "tpl-001"
     assert result.json()["interpretation"] == {}
+
+
+def test_interpret_sessions_list_includes_viewer_only_session(viewer_data_dir) -> None:
+    from datetime import UTC, datetime
+
+    from viewer.deps import get_session_store
+
+    client = TestClient(create_app())
+    now = datetime.now(UTC).isoformat()
+    get_session_store().add(
+        SessionRecord(
+            id="viewer-only",
+            title="viewer.docx",
+            workspace_path="/tmp/ws",
+            source_type="upload",
+            status="success",
+            created_at=now,
+            opened_at=now,
+        )
+    )
+
+    response = client.get("/api/interpret/sessions")
+    assert response.status_code == 200
+    assert any(session["id"] == "viewer-only" for session in response.json())

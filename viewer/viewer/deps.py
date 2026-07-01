@@ -41,7 +41,13 @@ def get_interpret_job_registry() -> InterpretJobRegistry:
 
 @lru_cache
 def get_pipeline_service() -> PipelineService:
-    return PipelineService(sessions=get_session_store(), jobs=get_job_registry())
+    settings = get_settings()
+    return PipelineService(
+        sessions=get_session_store(),
+        jobs=get_job_registry(),
+        interpret_sessions=get_interpret_session_store(),
+        settings=settings,
+    )
 
 
 @lru_cache
