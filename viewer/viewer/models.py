@@ -59,6 +59,22 @@ class SectionResponse(BaseModel):
     markdown: str
 
 
+class DocumentAssetItemResponse(BaseModel):
+    asset_type: Literal["image", "table"]
+    ref: str
+    source_block_index: int | None = None
+    char_start: int | None = None
+    char_end: int | None = None
+    preview: str | None = None
+    outline_node_id: str | None = None
+    meta: dict = Field(default_factory=dict)
+
+
+class DocumentAssetsResponse(BaseModel):
+    images: list[DocumentAssetItemResponse] = Field(default_factory=list)
+    tables: list[DocumentAssetItemResponse] = Field(default_factory=list)
+
+
 class InterpretSessionRecord(BaseModel):
     id: str
     title: str
