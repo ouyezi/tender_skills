@@ -39,3 +39,25 @@ def test_tables_manifest_model() -> None:
     )
     assert manifest.schema_version == "1.0"
     assert manifest.tables[0].table_ref == "tables/t0000.json"
+
+
+def test_tables_manifest_schema_1_1_slice_fields() -> None:
+    manifest = TablesManifest(
+        schema_version="1.1",
+        tables=[
+            TableManifestEntry(
+                table_ref="tables/t0003.json",
+                slice_ref="tables/t0003.docx",
+                slice_status="ok",
+                slice_byte_size=4096,
+                source_block_index=3,
+                layout_type="simple",
+                row_count=2,
+                col_count=2,
+                char_start=0,
+                char_end=50,
+            )
+        ],
+    )
+    assert manifest.schema_version == "1.1"
+    assert manifest.tables[0].slice_byte_size == 4096

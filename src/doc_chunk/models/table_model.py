@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+SliceStatus = Literal["ok", "failed", "missing"]
+
 
 class TableCell(BaseModel):
     text: str
@@ -17,8 +19,10 @@ class TableGridRow(BaseModel):
 
 
 class TableSidecar(BaseModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     block_index: int
+    slice_ref: str | None = None
+    slice_status: SliceStatus = "missing"
     layout_type: Literal["personnel_dual_row", "simple", "key_value", "fallback"]
     grid_width: int
     grid: dict[str, Any]
