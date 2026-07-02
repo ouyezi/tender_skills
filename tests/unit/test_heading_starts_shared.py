@@ -88,3 +88,13 @@ def test_fallback_char_start_finds_first_body_match() -> None:
     pos = fallback_char_start(TOC_BID_CONTENT_MD, "2.1合同条款偏离表12", level=3)
     assert pos is not None
     assert TOC_BID_CONTENT_MD[pos : pos + 20].startswith("### 2.1")
+
+
+def test_build_node_heading_starts_matches_slice_section() -> None:
+    from viewer.services.section_slice import slice_section
+
+    tree = _toc_bid_tree()
+    starts = build_node_heading_starts(tree, TOC_BID_CONTENT_MD)
+    for node in tree.nodes:
+        section = slice_section(TOC_BID_CONTENT_MD, tree, node.node_id)
+        assert starts.get(node.node_id) == section.char_start, node.node_id
