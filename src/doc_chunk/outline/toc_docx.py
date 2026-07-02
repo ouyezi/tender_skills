@@ -12,7 +12,21 @@ _DOC_XML_PATH = "word/document.xml"
 _WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _NS = {"w": _WORD_NS}
 _TRAILING_PAGE_RE = re.compile(r"\s+\d+\s*$")
+_GLUED_PAGE_RE = re.compile(r"^(?P<title>.+?\D)(?P<page>\d{1,3})$")
 _TOC_STYLE_RE = re.compile(r"^toc(\d+)$")
+
+
+def _join_toc_text_parts(parts: list[str]) -> str:
+    cleaned = [part.strip() for part in parts if part and part.strip()]
+    if not cleaned:
+        return ""
+    if len(cleaned) >= 2 and cleaned[-1].isdigit():
+        return "".join(cleaned[:-1])
+    joined = "".join(cleaned)
+    glued = _GLUED_PAGE_RE.match(joined)
+    if glued is not None:
+        return glued.group("title")
+    return _TRAILING_PAGE_RE.sub("", joined).strip()
 
 
 def extract_docx_toc_outline(source_path: Path) -> OutlineTree | None:
@@ -45,8 +59,8 @@ def extract_docx_toc_outline(source_path: Path) -> OutlineTree | None:
             continue
 
         level = max(1, min(8, int(match.group(1))))
-        raw_title = "".join(paragraph.xpath(".//w:t/text()", namespaces=_NS))
-        title = _TRAILING_PAGE_RE.sub("", " ".join(raw_title.split())).strip()
+        text_parts = paragraph.xpath(".//w:t/text()", namespaces=_NS)
+        title = _join_toc_text_parts(text_parts)
         if not title:
             continue
 

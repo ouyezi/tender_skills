@@ -15,7 +15,7 @@ from tender_insights.errors import WorkspaceResolveError
 def _is_workspace(path: Path) -> bool:
     return path.is_dir() and (path / "manifest.json").is_file() and (path / "content.md").is_file()
 
-INSIGHTS_PIPELINE_KWARGS = {"skip_refine": True, "skip_enrich": True}
+INSIGHTS_PIPELINE_KWARGS = {"skip_refine": True, "skip_enrich": True, "promote_headings": "auto"}
 
 
 def _run_pipeline_to_workspace(

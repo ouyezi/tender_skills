@@ -13,6 +13,16 @@ _NUM_HEADING_RE = re.compile(
 _CN_ENUM_MAX_LEN = 60
 _COLON_LIST_BODY_RE = re.compile(r"^[^：:\n]{2,40}[：:].+")
 _CN_LOCAL_ENUM_PARA_RE = re.compile(r"^[一二三四五六七八九十]+、.+[：:]\s*$")
+_CN_ENUM_PREFIX_RE = re.compile(r"^[一二三四五六七八九十百零]+、[ \t]*")
+_TOC_PAGE_SUFFIX_RE = re.compile(r"[\t]\d+\s*$")
+
+
+def is_toc_entry_line(line: str) -> bool:
+    """Table-of-contents row: title + tab + page number (must not become a section heading)."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    return bool(_TOC_PAGE_SUFFIX_RE.search(stripped))
 
 
 class PromoteHeadingsState:
@@ -66,12 +76,13 @@ def parse_content_heading_line(line: str) -> tuple[int, str] | None:
     stripped = line.strip()
     if not stripped or len(stripped) > 120:
         return None
+    if is_toc_entry_line(stripped):
+        return None
     if is_list_body_line(stripped):
         return None
     cn_match = _CN_CHAPTER_RE.match(stripped)
     if cn_match:
-        title = cn_match.group(1).strip() or stripped
-        return 1, title
+        return 1, stripped
     cn_enum = _CN_ENUM_RE.match(stripped)
     if cn_enum:
         body = cn_enum.group(2).strip()
@@ -96,5 +107,5 @@ def parse_content_heading_line(line: str) -> tuple[int, str] | None:
         level = min(seq.count(".") + 1, 8)
         if level == 1 and (len(title) > 50 or "：" in title or ":" in title):
             return None
-        return level, title
+        return level, stripped
     return None

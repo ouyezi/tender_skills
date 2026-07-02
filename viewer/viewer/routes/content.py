@@ -15,7 +15,7 @@ from viewer.deps import get_interpret_session_store, get_session_store
 from viewer.models import DocumentAssetItemResponse, DocumentAssetsResponse
 from viewer.services.asset_navigation import resolve_outline_node_for_char
 from viewer.services.outline_tree import build_outline_response
-from viewer.services.section_slice import slice_section
+from viewer.services.section_slice import build_section_char_ranges, slice_section
 from viewer.services.session_sync import resolve_viewer_session
 from viewer.services.workspace import validate_workspace
 
@@ -37,11 +37,17 @@ def _enrich_assets(workspace: Path) -> DocumentAssetsResponse:
     content_md = (workspace / "content.md").read_text(encoding="utf-8")
     outline = OutlineTree.model_validate_json((workspace / "outline.json").read_text(encoding="utf-8"))
     doc_assets = collect_document_assets(workspace)
+    section_ranges = build_section_char_ranges(content_md, outline)
 
     def enrich(entry: DocumentAssetEntry) -> DocumentAssetItemResponse:
         outline_node_id = None
         if entry.char_start is not None:
-            outline_node_id = resolve_outline_node_for_char(entry.char_start, content_md, outline)
+            outline_node_id = resolve_outline_node_for_char(
+                entry.char_start,
+                content_md,
+                outline,
+                section_ranges=section_ranges,
+            )
         return DocumentAssetItemResponse(
             asset_type=entry.asset_type,
             ref=entry.ref,

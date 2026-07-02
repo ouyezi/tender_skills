@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from doc_chunk.extract.promote_headings import PromoteHeadingsState
+from doc_chunk.extract.promote_headings import PromoteHeadingsState, is_toc_entry_line
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
 
 _MD_HEADING_RE = re.compile(r"^(#{1,8})[ \t]+(.+?)[ \t#]*$", re.MULTILINE)
@@ -18,6 +18,8 @@ def extract_heading_outline(content_md: str) -> OutlineTree | None:
     for idx, match in enumerate(matches):
         level = len(match.group(1))
         title = match.group(2).strip()
+        if is_toc_entry_line(title):
+            continue
         if not title:
             continue
         parent_id = None

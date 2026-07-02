@@ -16,9 +16,11 @@ def test_parse_content_heading_line_cn_enum() -> None:
     assert parse_content_heading_line("1、景区门票：接入全国8000多家") is None
     assert parse_content_heading_line("景区门票：接入全国8000多家旅游景点") is None
     assert parse_content_heading_line("1.口腔健康") is None
-    assert parse_content_heading_line("1. 技术方案") == (1, "技术方案")
+    assert parse_content_heading_line("1. 技术方案") == (1, "1. 技术方案")
     assert parse_content_heading_line("1\u3000先进的订单管理系统：很长") is None
-    assert parse_content_heading_line("1.1企业介绍") == (2, "企业介绍")
+    assert parse_content_heading_line("1.1企业介绍") == (2, "1.1企业介绍")
+    assert parse_content_heading_line("三、 服务费一览表\t4") is None
+    assert parse_content_heading_line("2.1 合同条款偏离表（模板）\t2") is None
     assert parse_content_heading_line("普通段落。") is None
 
 
@@ -46,8 +48,8 @@ def test_promote_headings_auto_promotes_cn_enum(tmp_path: Path) -> None:
     assert "二、百福得服务方案介绍" in root_titles
 
     by_title = {node.title: node for node in outline.nodes}
-    assert by_title["企业福利管理的痛点及挑战"].parent_id == by_title["二、百福得服务方案介绍"].node_id
-    assert by_title["企业介绍"].parent_id == by_title["一、企业简介及资质"].node_id
+    assert by_title["2.1 企业福利管理的痛点及挑战"].parent_id == by_title["二、百福得服务方案介绍"].node_id
+    assert by_title["1.1 企业介绍"].parent_id == by_title["一、企业简介及资质"].node_id
 
 
 def test_promote_headings_keeps_local_cn_enum_series_as_paragraphs(tmp_path: Path) -> None:
@@ -70,7 +72,7 @@ def test_promote_headings_keeps_local_cn_enum_series_as_paragraphs(tmp_path: Pat
     assert "三、索赔及服务问答" in content_md
     assert "# 三、索赔及服务问答" not in content_md
     assert "# 四、应急措施" not in content_md
-    assert "#### 员工保险" in content_md or "## 员工保险" in content_md
+    assert "#### 2.2.5.2 员工保险" in content_md
 
     extract_outline(workspace)
     outline = OutlineTree.model_validate_json((workspace / "outline.json").read_text(encoding="utf-8"))

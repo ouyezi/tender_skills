@@ -73,6 +73,7 @@ class PipelineService:
                 overwrite=True,
                 skip_refine=True,
                 skip_enrich=True,
+                promote_headings="auto",
                 on_progress=_progress,
             )
 

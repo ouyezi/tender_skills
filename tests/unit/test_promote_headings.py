@@ -36,8 +36,8 @@ def test_promote_headings_auto_adds_hash_prefix(no_heading_docx: Path, tmp_path:
     plain_md = (ws_plain / "content.md").read_text(encoding="utf-8")
     promoted_md = (ws_promoted / "content.md").read_text(encoding="utf-8")
     assert "# 技术方案" not in plain_md
-    assert "# 技术方案" in promoted_md
-    assert "# 报价说明" in promoted_md
+    assert "# 2. 技术方案" in promoted_md
+    assert "# 3. 报价说明" in promoted_md
 
     extract_outline(ws_plain)
     extract_outline(ws_promoted)

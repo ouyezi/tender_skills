@@ -7,9 +7,19 @@ from doc_chunk.models.outline import OutlineNode, OutlineTree
 
 from viewer.models import SectionResponse
 from viewer.services.outline_tree import PREFACE_NODE_ID
+from doc_chunk.extract.promote_headings import is_toc_entry_line
 
 _HEADING_RE = re.compile(r"^(#{1,8})[ \t]+(.+?)[ \t#]*$", re.MULTILINE)
 _NUM_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)*[\s、.．]+)")
+_CN_ENUM_PREFIX_RE = re.compile(r"^[一二三四五六七八九十百零]+、[ \t]*")
+_TOC_PAGE_SUFFIX_RE = re.compile(r"[\t]\d+\s*$")
+
+
+@dataclass(frozen=True, slots=True)
+class SectionCharRange:
+    node_id: str
+    char_start: int
+    char_end: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,12 +30,18 @@ class _Heading:
 
 
 def _normalize_title(text: str) -> str:
-    return _NUM_PREFIX_RE.sub("", text).strip().lower()
+    stripped = _TOC_PAGE_SUFFIX_RE.sub("", text.strip())
+    stripped = _CN_ENUM_PREFIX_RE.sub("", stripped)
+    stripped = _NUM_PREFIX_RE.sub("", stripped)
+    return stripped.strip().lower()
 
 
 def _parse_headings(content_md: str) -> list[_Heading]:
     headings: list[_Heading] = []
     for match in _HEADING_RE.finditer(content_md):
+        title = match.group(2).strip()
+        if is_toc_entry_line(title):
+            continue
         headings.append(
             _Heading(
                 char_start=match.start(),
@@ -104,6 +120,21 @@ def _preface_end(content_md: str, heading_starts: dict[str, int]) -> int:
     if heading_starts:
         return min(heading_starts.values())
     return 0
+
+
+def build_section_char_ranges(content_md: str, outline_tree: OutlineTree) -> list[SectionCharRange]:
+    heading_starts = _build_node_heading_starts(outline_tree, content_md)
+    preface_end = _preface_end(content_md, heading_starts)
+    ranges: list[SectionCharRange] = [
+        SectionCharRange(PREFACE_NODE_ID, 0, preface_end),
+    ]
+    for node in outline_tree.nodes:
+        start = heading_starts.get(node.node_id)
+        if start is None:
+            start = _fallback_char_start(content_md, node.title, level=node.level) or 0
+        end = _section_end_by_heading(content_md, start, node.level)
+        ranges.append(SectionCharRange(node.node_id, start, end))
+    return ranges
 
 
 def slice_section(content_md: str, outline_tree: OutlineTree, node_id: str) -> SectionResponse:

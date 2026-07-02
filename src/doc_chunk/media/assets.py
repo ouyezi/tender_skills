@@ -9,18 +9,17 @@ from doc_chunk.models.tables_manifest import TablesManifest
 from doc_chunk.workspace.layout import OutputWorkspace
 
 
-def _char_range_for_ref(
+def _build_block_ref_maps(
     blocks: ContentBlocksFile,
-    *,
-    image_ref: str | None = None,
-    table_ref: str | None = None,
-) -> tuple[int | None, int | None, int | None]:
+) -> tuple[dict[str, tuple[int, int, int]], dict[str, tuple[int, int, int]]]:
+    image_map: dict[str, tuple[int, int, int]] = {}
+    table_map: dict[str, tuple[int, int, int]] = {}
     for block in blocks.blocks:
-        if image_ref and block.image_ref == image_ref:
-            return block.block_index, block.char_start, block.char_end
-        if table_ref and block.table_ref == table_ref:
-            return block.block_index, block.char_start, block.char_end
-    return None, None, None
+        if block.image_ref:
+            image_map[block.image_ref] = (block.block_index, block.char_start, block.char_end)
+        if block.table_ref:
+            table_map[block.table_ref] = (block.block_index, block.char_start, block.char_end)
+    return image_map, table_map
 
 
 def _sort_key(entry: DocumentAssetEntry) -> tuple[int, str]:
@@ -31,21 +30,22 @@ def _sort_key(entry: DocumentAssetEntry) -> tuple[int, str]:
 
 def collect_document_assets(workspace: OutputWorkspace | Path) -> DocumentAssetsFile:
     ws = workspace if isinstance(workspace, OutputWorkspace) else OutputWorkspace.open_existing(Path(workspace))
-    blocks_file: ContentBlocksFile | None = None
+    image_block_map: dict[str, tuple[int, int, int]] = {}
+    table_block_map: dict[str, tuple[int, int, int]] = {}
     if ws.content_blocks_path.is_file():
         blocks_file = ContentBlocksFile.model_validate_json(
             ws.content_blocks_path.read_text(encoding="utf-8")
         )
+        image_block_map, table_block_map = _build_block_ref_maps(blocks_file)
 
     images: list[DocumentAssetEntry] = []
     if ws.images_manifest_path.is_file():
         manifest = ImagesManifest.model_validate_json(ws.images_manifest_path.read_text(encoding="utf-8"))
         for item in manifest.images:
             block_index, char_start, char_end = (None, None, None)
-            if blocks_file is not None:
-                block_index, char_start, char_end = _char_range_for_ref(
-                    blocks_file, image_ref=item.image_ref
-                )
+            block_range = image_block_map.get(item.image_ref)
+            if block_range is not None:
+                block_index, char_start, char_end = block_range
             images.append(
                 DocumentAssetEntry(
                     asset_type="image",
@@ -68,10 +68,9 @@ def collect_document_assets(workspace: OutputWorkspace | Path) -> DocumentAssets
         manifest = TablesManifest.model_validate_json(ws.tables_manifest_path.read_text(encoding="utf-8"))
         for item in manifest.tables:
             block_index, char_start, char_end = (None, None, None)
-            if blocks_file is not None:
-                block_index, char_start, char_end = _char_range_for_ref(
-                    blocks_file, table_ref=item.table_ref
-                )
+            block_range = table_block_map.get(item.table_ref)
+            if block_range is not None:
+                block_index, char_start, char_end = block_range
             tables.append(
                 DocumentAssetEntry(
                     asset_type="table",
