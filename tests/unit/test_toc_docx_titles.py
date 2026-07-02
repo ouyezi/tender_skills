@@ -12,11 +12,13 @@ from doc_chunk.outline.toc_docx import _join_toc_text_parts, extract_docx_toc_ou
 @pytest.mark.parametrize(
     ("parts", "expected"),
     [
-        (["1", "投标函", "11"], "1投标函"),
-        (["2.1", "合同条款偏离表", "12"], "2.1合同条款偏离表"),
+        (["1", "投标函", "11"], "1 投标函"),
+        (["2.1", "合同条款偏离表", "12"], "2.1 合同条款偏离表"),
+        (["2.1 合同条款偏离表", "12"], "2.1 合同条款偏离表"),
+        (["1 投标函", "11"], "1 投标函"),
         (["评分索引表", "10"], "评分索引表"),
         (["评分索引表10"], "评分索引表"),
-        (["1投标函11"], "1投标函"),
+        (["1投标函11"], "1 投标函"),
     ],
 )
 def test_join_toc_text_parts(parts: list[str], expected: str) -> None:
@@ -36,7 +38,7 @@ def test_extract_docx_toc_outline_strips_page_numbers() -> None:
     tree = extract_docx_toc_outline(docx_path)
     assert tree is not None
     titles = [node.title for node in tree.nodes[:5]]
-    assert titles == ["评分索引表", "1投标函", "2服务偏离表", "2.1合同条款偏离表", "2.2技术条款偏离表"]
+    assert titles == ["评分索引表", "1 投标函", "2 服务偏离表", "2.1 合同条款偏离表", "2.2 技术条款偏离表"]
 
 
 def _minimal_docx_with_numeric_toc_styles(tmp_path: Path) -> Path:
@@ -100,4 +102,5 @@ def test_extract_docx_toc_outline_numeric_style_ids(tmp_path: Path) -> None:
     assert tree.strategy == "toc"
     titles = [node.title for node in tree.nodes]
     assert titles[0] == "一、 投标函"
-    assert titles[2].startswith("2.1")
+    assert titles[2].startswith("2.1 ")
+    assert titles[2].startswith("2.1 合同")

@@ -7,11 +7,34 @@ from doc_chunk.extract.promote_headings import is_toc_entry_line
 from doc_chunk.models.outline import OutlineNode, OutlineTree
 
 _HEADING_RE = re.compile(r"^(#{1,8})[ \t]+(.+?)[ \t#]*$", re.MULTILINE)
-_NUM_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)*[\s、.．]+)")
+_GLUED_SECTION_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)+)[\s、.．]*(?=[\u4e00-\u9fffA-Za-z])")
+_SINGLE_SECTION_PREFIX_RE = re.compile(r"^\d+[\s、.．]+")
 _CN_ENUM_PREFIX_RE = re.compile(r"^[一二三四五六七八九十百零]+、[ \t]*")
 _TOC_PAGE_SUFFIX_RE = re.compile(r"[\t]\d+\s*$")
 _GLUED_PAGE_RE = re.compile(r"^(?P<title>.+?\D)(?P<page>\d{1,3})$")
 _LEADING_GLUED_NUM_RE = re.compile(r"^\d+(?=[\u4e00-\u9fff])")
+_GLUED_CN_ENUM_SPACING_RE = re.compile(r"^([一二三四五六七八九十百零]+、)(?=[\u4e00-\u9fffA-Za-z])")
+_GLUED_DECIMAL_SPACING_RE = re.compile(r"^(\d+(?:\.\d+)*)(?=[\u4e00-\u9fffA-Za-z])")
+_GLUED_SINGLE_NUM_PUNCT_SPACING_RE = re.compile(r"^(\d+[、.．])(?=[\u4e00-\u9fffA-Za-z])")
+
+
+def ensure_section_prefix_spacing(title: str) -> str:
+    """Insert a space between section prefix and title text when glued together."""
+    stripped = title.strip()
+    if not stripped:
+        return stripped
+
+    for pattern in (
+        _GLUED_CN_ENUM_SPACING_RE,
+        _GLUED_DECIMAL_SPACING_RE,
+        _GLUED_SINGLE_NUM_PUNCT_SPACING_RE,
+    ):
+        match = pattern.match(stripped)
+        if match is None:
+            continue
+        prefix = match.group(1)
+        return f"{prefix} {stripped[len(prefix) :]}"
+    return stripped
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +51,8 @@ def normalize_outline_title(text: str) -> str:
         stripped = glued.group("title")
     stripped = _LEADING_GLUED_NUM_RE.sub("", stripped)
     stripped = _CN_ENUM_PREFIX_RE.sub("", stripped)
-    stripped = _NUM_PREFIX_RE.sub("", stripped)
+    stripped = _GLUED_SECTION_PREFIX_RE.sub("", stripped)
+    stripped = _SINGLE_SECTION_PREFIX_RE.sub("", stripped)
     return stripped.strip().lower()
 
 

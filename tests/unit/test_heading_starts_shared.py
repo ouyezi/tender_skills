@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from doc_chunk.locate.heading_starts import (
     build_node_heading_starts,
+    ensure_section_prefix_spacing,
     fallback_char_start,
     normalize_outline_title,
     parse_body_headings,
@@ -64,8 +67,26 @@ def test_parse_body_headings_skips_toc_entries() -> None:
 
 
 def test_normalize_outline_title_strips_glue_page_and_prefix() -> None:
-    assert normalize_outline_title("2.1合同条款偏离表12") == normalize_outline_title("2.1合同条款偏离表")
+    assert normalize_outline_title("2.1合同条款偏离表12") == normalize_outline_title("2.1 合同条款偏离表")
     assert normalize_outline_title("1投标函11") == normalize_outline_title("投标函")
+    assert normalize_outline_title("2.1合同条款偏离表（模板）") == normalize_outline_title(
+        "合同条款偏离表（模板）"
+    )
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("2.1合同条款偏离表", "2.1 合同条款偏离表"),
+        ("2.1 合同条款偏离表", "2.1 合同条款偏离表"),
+        ("1投标函", "1 投标函"),
+        ("一、投标函", "一、 投标函"),
+        ("一、 投标函", "一、 投标函"),
+        ("评分索引表", "评分索引表"),
+    ],
+)
+def test_ensure_section_prefix_spacing(title: str, expected: str) -> None:
+    assert ensure_section_prefix_spacing(title) == expected
 
 
 def test_build_node_heading_starts_skips_toc_for_section_2_1() -> None:

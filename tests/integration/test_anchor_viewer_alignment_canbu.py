@@ -26,3 +26,13 @@ def test_all_outline_anchors_match_viewer(tmp_path: Path) -> None:
                 f"{node.node_id} {node.title!r}: anchor={node.anchor.char_start} viewer={section.char_start}"
             )
     assert not mismatches, "\n".join(mismatches[:10])
+
+    contract_node = next(
+        (n for n in outline.nodes if "2.1" in n.title and "合同条款偏离表" in n.title),
+        None,
+    )
+    if contract_node is not None:
+        section = slice_section(content_md, outline, contract_node.node_id)
+        first_line = section.markdown.splitlines()[0]
+        assert "2.1" in first_line, first_line
+        assert "合同条款偏离表" in first_line, first_line

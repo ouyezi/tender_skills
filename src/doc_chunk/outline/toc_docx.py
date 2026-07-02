@@ -6,6 +6,7 @@ from zipfile import ZipFile
 
 from lxml import etree
 
+from doc_chunk.locate.heading_starts import ensure_section_prefix_spacing
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
 
 _DOC_XML_PATH = "word/document.xml"
@@ -23,12 +24,15 @@ def _join_toc_text_parts(parts: list[str]) -> str:
     if not cleaned:
         return ""
     if len(cleaned) >= 2 and cleaned[-1].isdigit():
-        return "".join(cleaned[:-1])
-    joined = "".join(cleaned)
-    glued = _GLUED_PAGE_RE.match(joined)
-    if glued is not None:
-        return glued.group("title")
-    return _TRAILING_PAGE_RE.sub("", joined).strip()
+        title = "".join(cleaned[:-1])
+    else:
+        joined = "".join(cleaned)
+        glued = _GLUED_PAGE_RE.match(joined)
+        if glued is not None:
+            title = glued.group("title")
+        else:
+            title = _TRAILING_PAGE_RE.sub("", joined).strip()
+    return ensure_section_prefix_spacing(title)
 
 
 def build_toc_style_level_map(styles_xml: bytes) -> dict[str, int]:

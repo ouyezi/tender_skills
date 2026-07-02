@@ -6,6 +6,10 @@ from pathlib import Path
 from doc_chunk.models.content_block import ContentBlocksFile
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
 from doc_chunk.outline.anchor_enricher import enrich_outline_anchors
+from doc_chunk.outline.content_heading_enricher import (
+    enrich_content_md_headings,
+    resync_blocks_char_offsets,
+)
 from doc_chunk.outline.continuity import normalize_outline_cn_continuity
 from doc_chunk.outline.heading_heuristic import (
     extract_content_heuristic_outline,
@@ -59,10 +63,25 @@ def build_outline_from_workspace(workspace: OutputWorkspace, source_path: Path) 
     if tree is None:
         tree = _flat_outline(workspace, source_path)
 
+    blocks: ContentBlocksFile | None = None
     if workspace.content_blocks_path.exists():
         blocks = ContentBlocksFile.model_validate_json(
             workspace.content_blocks_path.read_text(encoding="utf-8")
         )
+
+    if tree.strategy == "toc" and content_md:
+        enriched_md, title_edits = enrich_content_md_headings(content_md, tree)
+        if title_edits:
+            content_md = enriched_md
+            workspace.content_path.write_text(content_md, encoding="utf-8")
+            if blocks is not None:
+                blocks = resync_blocks_char_offsets(blocks, title_edits, content_md=content_md)
+                workspace.content_blocks_path.write_text(
+                    blocks.model_dump_json(indent=2),
+                    encoding="utf-8",
+                )
+
+    if blocks is not None:
         tree = enrich_outline_anchors(tree, blocks, content_md=content_md)
 
     if tree.strategy in {"heading_heuristic", "toc", "content_heuristic"}:
