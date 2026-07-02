@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 
-from doc_chunk.models.content_block import ContentBlocksFile
+from doc_chunk.locate.heading_starts import build_node_heading_starts
+from doc_chunk.models.content_block import ContentBlockRecord, ContentBlocksFile
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
 
 _NUM_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)*[\s、.．]+)")
@@ -10,6 +11,16 @@ _NUM_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)*[\s、.．]+)")
 
 def _normalize_title(text: str) -> str:
     return _NUM_PREFIX_RE.sub("", text).strip().lower()
+
+
+def _find_block_for_char_start(blocks: ContentBlocksFile, char_start: int) -> ContentBlockRecord | None:
+    candidates = [b for b in blocks.blocks if b.char_start <= char_start < b.char_end]
+    if not candidates:
+        return None
+    for block in candidates:
+        if block.block_type == "heading":
+            return block
+    return candidates[0]
 
 
 def _find_block_for_title(title: str, blocks: ContentBlocksFile, content_md: str) -> int | None:
@@ -76,26 +87,65 @@ def enrich_outline_anchors(
     content_md: str,
 ) -> OutlineTree:
     block_by_index = {b.block_index: b for b in blocks.blocks}
+    heading_starts = build_node_heading_starts(tree, content_md, use_existing_anchor_fallback=False)
     new_nodes: list[OutlineNode] = []
+
     for node in tree.nodes:
         anchor = node.anchor.model_copy()
-        idx = anchor.block_index
-        if idx is None or idx not in block_by_index:
-            idx = _find_block_for_title(node.title, blocks, content_md)
-        elif idx in block_by_index:
-            relocated = _relocate_non_paragraph_anchor(
-                node.model_copy(update={"anchor": anchor}),
-                blocks,
-                content_md,
-                all_nodes=tree.nodes,
-            )
-            if relocated is not None:
-                idx = relocated
+        needs_review = node.needs_review
+        idx: int | None = anchor.block_index
+
+        if node.node_id in heading_starts:
+            char_start = heading_starts[node.node_id]
+            block = _find_block_for_char_start(blocks, char_start)
+            if block is not None:
+                idx = block.block_index
+                anchor.char_start = block.char_start
+                anchor.char_end = block.char_end
+                anchor.block_index = idx
+                anchor.block_start = idx
+            else:
+                anchor.char_start = char_start
+                anchor.char_end = char_start
+        else:
+            if idx is None or idx not in block_by_index:
+                idx = _find_block_for_title(node.title, blocks, content_md)
+            elif idx in block_by_index:
+                relocated = _relocate_non_paragraph_anchor(
+                    node.model_copy(update={"anchor": anchor}),
+                    blocks,
+                    content_md,
+                    all_nodes=tree.nodes,
+                )
+                if relocated is not None:
+                    idx = relocated
+            if idx is not None and idx in block_by_index:
+                block = block_by_index[idx]
+                anchor.block_index = idx
+                anchor.block_start = idx
+                anchor.char_start = block.char_start
+                anchor.char_end = block.char_end
+            else:
+                anchor.char_start = None
+                anchor.char_end = None
+                needs_review = True
+
         if idx is not None and idx in block_by_index:
             block = block_by_index[idx]
-            anchor.block_index = idx
-            anchor.block_start = idx
-            anchor.char_start = block.char_start
-            anchor.char_end = block.char_end
-        new_nodes.append(node.model_copy(update={"anchor": anchor}))
+            if block.block_type not in {"paragraph", "heading"}:
+                relocated = _relocate_non_paragraph_anchor(
+                    node.model_copy(update={"anchor": anchor}),
+                    blocks,
+                    content_md,
+                    all_nodes=tree.nodes,
+                )
+                if relocated is not None and relocated in block_by_index:
+                    block = block_by_index[relocated]
+                    anchor.block_index = relocated
+                    anchor.block_start = relocated
+                    anchor.char_start = block.char_start
+                    anchor.char_end = block.char_end
+
+        new_nodes.append(node.model_copy(update={"anchor": anchor, "needs_review": needs_review}))
+
     return tree.model_copy(update={"nodes": new_nodes})
