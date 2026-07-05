@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from agent_platform.backends.local import LocalBackend
+from agent_platform.client import AgentClient
 from doc_chunk.errors import ValidationError
 from doc_chunk.llm.client import FakeLLMClient
 from doc_chunk.models.outline import Anchor, OutlineNode, OutlineTree
@@ -28,9 +30,14 @@ def _session(tmp_path: Path) -> RefineSession:
     return RefineSession(workspace=tmp_path / "ws", original_outline=original)
 
 
+def _agent_client(responses: list[str]) -> AgentClient:
+    llm = FakeLLMClient(responses=responses)
+    return AgentClient(LocalBackend(llm_client=llm))
+
+
 def test_refine_engine_runs_with_fake_llm(tmp_path: Path) -> None:
-    llm = FakeLLMClient(
-        responses=[
+    client = _agent_client(
+        [
             (
                 '{"outline_refined":{"schema_version":"1.0","strategy":"heading_heuristic","nodes":[{"node_id":"r1",'
                 '"title":"合并章节","level":1,"parent_id":null,"sort_order":0,"anchor":{"block_index":0},"needs_review":false,'
@@ -40,7 +47,7 @@ def test_refine_engine_runs_with_fake_llm(tmp_path: Path) -> None:
             )
         ]
     )
-    engine = OutlineRefineEngine(llm_client=llm, strict=True, max_retries=2)
+    engine = OutlineRefineEngine(agent_client=client, strict=True, max_retries=2)
     refined, mapping, summary, preview = engine.run_round(session=_session(tmp_path), instruction="重命名")
     assert refined.nodes[0].title == "合并章节"
     assert mapping.mappings[0].refined_node_id == "r1"
@@ -50,7 +57,8 @@ def test_refine_engine_runs_with_fake_llm(tmp_path: Path) -> None:
 
 def test_refine_engine_retries_and_fails_after_max(tmp_path: Path) -> None:
     llm = FakeLLMClient(responses=["not-json", "still-not-json", "again"])
-    engine = OutlineRefineEngine(llm_client=llm, strict=True, max_retries=2)
+    client = AgentClient(LocalBackend(llm_client=llm))
+    engine = OutlineRefineEngine(agent_client=client, strict=True, max_retries=2)
     with pytest.raises(ValidationError):
         engine.run_round(session=_session(tmp_path), instruction="重命名")
     assert len(llm.calls) == 3
