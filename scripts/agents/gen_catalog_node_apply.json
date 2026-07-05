@@ -1,0 +1,36 @@
+{
+  "callType": "gen_catalog_node_apply",
+  "zhName": "目录节点优化执行",
+  "enName": "gen_catalog_node_apply",
+  "description": "按优化方案更新完整目录树",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是投标目录规划专家。根据优化方案更新完整目录树。\n只输出 JSON：{\"outline\": <BidOutlineNode>, \"changes_summary\": \"<本步调整说明>\"}\n根 id=bid-root，已有 bid-NNN id 保持不变。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_context", "name": "context_json", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_outline", "name": "outline", "type": "object", "required": true, "children": [
+        { "id": "f_o_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_o_title", "name": "title", "type": "string", "required": true },
+        { "id": "f_o_children", "name": "children", "type": "array", "required": true, "itemType": "object", "children": [
+          { "id": "f_oc_id", "name": "id", "type": "string", "required": true },
+          { "id": "f_oc_title", "name": "title", "type": "string", "required": true }
+        ]}
+      ]},
+      { "id": "f_summary", "name": "changes_summary", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      { "id": "msg_user", "role": "user", "mode": "text", "content": "{{context_json}}\n\n## 任务：执行目录更新\n\n只输出 JSON。" }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 180000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 180000 },
+  "verify": {
+    "input": {
+      "context_json": "## 当前完整目录树\n{\"id\":\"bid-root\",\"title\":\"投标文件\",\"children\":[{\"id\":\"bid-001\",\"title\":\"投标函\"}]}\n\n## 优化或细化方案\n补充 bid-002 授权委托书章节。"
+    }
+  }
+}

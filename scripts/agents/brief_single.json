@@ -1,0 +1,40 @@
+{
+  "callType": "brief_single",
+  "zhName": "招标概要（单段）",
+  "enName": "brief_single",
+  "description": "短文档一次性提取招标基础概要",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标基础概要提取助手。阅读全部招标文件正文，生成标准化招标基础概要。\n必须提取 fields：issuer_company, procurement_subject, budget_info, qualification_requirements, key_timelines。\n无事实时写「未提及」。summary_text 总字数不超过 500 字。\n输出严格 JSON。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_markdown", "name": "markdown", "type": "string", "required": true },
+      { "id": "f_max_chars", "name": "max_chars", "type": "number", "required": false }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_ic", "name": "issuer_company", "type": "string", "required": true },
+      { "id": "f_ps", "name": "procurement_subject", "type": "string", "required": true },
+      { "id": "f_bi", "name": "budget_info", "type": "string", "required": true },
+      { "id": "f_qr", "name": "qualification_requirements", "type": "string", "required": true },
+      { "id": "f_kt", "name": "key_timelines", "type": "string", "required": true },
+      { "id": "f_summary", "name": "summary_text", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "请阅读全部正文并生成招标基础概要（summary_text 不超过 {{max_chars}} 字）。\n\n正文:\n{{markdown}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "markdown": "招标人：某某科技有限公司。采购内容：招标文档智能处理系统建设。预算100万元。投标人须具备软件企业认定。投标截止2026年8月1日。",
+      "max_chars": 500
+    }
+  }
+}

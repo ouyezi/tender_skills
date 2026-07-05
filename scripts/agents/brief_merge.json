@@ -1,0 +1,42 @@
+{
+  "callType": "brief_merge",
+  "zhName": "招标概要（分片合并）",
+  "enName": "brief_merge",
+  "description": "合并分片事实生成最终概要",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标基础概要合成助手。根据各分片已提取的事实，生成标准化招标基础概要。\nfields 五个字段均需填写；无事实时写「未提及」。summary_text 不超过 500 字。\n输出严格 JSON。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_partials", "name": "partials_json", "type": "string", "required": true },
+      { "id": "f_max_chars", "name": "max_chars", "type": "number", "required": false }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_fields", "name": "fields", "type": "object", "required": true, "children": [
+        { "id": "f_ic", "name": "issuer_company", "type": "string", "required": true },
+        { "id": "f_ps", "name": "procurement_subject", "type": "string", "required": true },
+        { "id": "f_bi", "name": "budget_info", "type": "string", "required": true },
+        { "id": "f_qr", "name": "qualification_requirements", "type": "string", "required": true },
+        { "id": "f_kt", "name": "key_timelines", "type": "string", "required": true }
+      ]},
+      { "id": "f_summary", "name": "summary_text", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "以下为分片提取的事实（JSON 数组）。请去重合并，生成最终 fields 与不超过 {{max_chars}} 字的 summary_text。\n\n{{partials_json}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "partials_json": "[{\"issuer_company\":[\"某某科技有限公司\"],\"procurement_subject\":[\"招标文档处理系统\"],\"budget_info\":[],\"qualification_requirements\":[],\"key_timelines\":[]}]",
+      "max_chars": 500
+    }
+  }
+}

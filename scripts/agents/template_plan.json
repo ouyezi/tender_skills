@@ -1,0 +1,37 @@
+{
+  "callType": "template_plan",
+  "zhName": "模板提取计划",
+  "enName": "template_plan",
+  "description": "根据分片摘要补充模板提取计划",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标文件分析专家。根据目录与各分片摘要，补充模版提取计划说明。\n只输出 JSON：{\"shard_count\": number, \"priority_sections\": [\"...\"], \"notes\": \"...\"}\n不要修改分片边界。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_title", "name": "doc_title", "type": "string", "required": true },
+      { "id": "f_summaries", "name": "shard_summaries_json", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_count", "name": "shard_count", "type": "number", "required": true },
+      { "id": "f_priority", "name": "priority_sections", "type": "array", "required": true, "itemType": "string" },
+      { "id": "f_notes", "name": "notes", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "文档标题: {{doc_title}}\n\n分片摘要:\n{{shard_summaries_json}}\n\n请根据目录与各分片摘要，补充模版提取计划说明。只输出 JSON。"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "doc_title": "某项目招标文件",
+      "shard_summaries_json": "[{\"shard_id\":\"s1\",\"section_path\":[\"投标文件格式\"],\"char_count\":3000,\"strategy\":\"section\"}]"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 # Tender Skills 智能体平台 Provision 设计
 
 > 日期：2026-07-05  
-> 状态：已确认  
+> 状态：已实现（2026-07-05）  
 > 范围：将 `docs/agent_requirements.md` 中 16 个 call_type 注册到 df-agent-os-python 平台（Agent + Application），并提供一键 provision 与格式验证。
 
 ---

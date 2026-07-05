@@ -1,0 +1,36 @@
+{
+  "callType": "gen_catalog_initial",
+  "zhName": "投标目录初始生成",
+  "enName": "gen_catalog_initial",
+  "description": "根据解读结果生成投标响应目录树",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是投标目录规划专家。根据招标文件解读结果，生成投标响应目录完整树。\n只输出 JSON：{\"outline\": <BidOutlineNode>, \"changes_summary\": \"...\"}。\n根节点 id 固定为 bid-root；节点 id 使用 bid-001 格式。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_context", "name": "context_json", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_outline", "name": "outline", "type": "object", "required": true, "children": [
+        { "id": "f_o_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_o_title", "name": "title", "type": "string", "required": true },
+        { "id": "f_o_children", "name": "children", "type": "array", "required": true, "itemType": "object", "children": [
+          { "id": "f_oc_id", "name": "id", "type": "string", "required": true },
+          { "id": "f_oc_title", "name": "title", "type": "string", "required": true }
+        ]}
+      ]},
+      { "id": "f_summary", "name": "changes_summary", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      { "id": "msg_user", "role": "user", "mode": "text", "content": "{{context_json}}" }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 180000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 180000 },
+  "verify": {
+    "input": {
+      "context_json": "## 解读概要\n{\"summary\":\"本项目采购招标文档系统\"}\n\n## 废标项\n[{\"id\":\"dq1\",\"title\":\"缺少营业执照\"}]\n\n## 评分项\n[{\"id\":\"sc1\",\"title\":\"技术方案\",\"max_score\":30}]\n\n## 目录要求\n[{\"title\":\"投标文件组成\",\"mandatory\":true}]"
+    }
+  }
+}

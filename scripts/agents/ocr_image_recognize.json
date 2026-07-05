@@ -1,0 +1,31 @@
+{
+  "callType": "ocr_image_recognize",
+  "zhName": "图片OCR识别",
+  "enName": "ocr_image_recognize",
+  "description": "识别图片中的文字，按阅读顺序输出纯文本",
+  "modelName": "qwen-vl-ocr",
+  "promptText": "请识别图片中的全部文字，按阅读顺序输出纯文本，不要解释。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_url", "name": "image_url", "type": "string", "required": true, "description": "图片 HTTP URL 或 data URI" }
+    ],
+    "formatOutput": false,
+    "outputSchema": [],
+    "initialMessages": [
+      {
+        "id": "msg_ocr",
+        "role": "user",
+        "mode": "multimodal",
+        "content": "[{\"type\":\"text\",\"text\":\"请识别图片中的全部文字，按阅读顺序输出纯文本，不要解释。\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"{{image_url}}\"}}]"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "image_url": "https://agent.mengxiang.com/ai-admin/images/logo.png"
+    }
+  }
+}

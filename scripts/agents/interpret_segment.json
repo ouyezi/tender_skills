@@ -1,0 +1,52 @@
+{
+  "callType": "interpret_segment",
+  "zhName": "招标文件分段解读",
+  "enName": "interpret_segment",
+  "description": "从正文分段提取废标项、评分项、风险与目录要求",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标文件解读专家。从给定正文片段中提取结构化信息。\n只输出 JSON，字段：\n- disqualification_items: 废标项（含 trigger_condition）\n- scoring_items: 得分项（含 max_score, weight, criteria, children[]）\n- bid_risk_items: 投标视角风险（severity: high|medium|low, risk_category）\n- directory_requirements: 目录/文件组成\n每条必须有 id, title, summary, source_excerpt, section_path, confidence（0.0–1.0 数值）。\n若无某类内容，对应数组返回 []。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_segment_id", "name": "segment_id", "type": "string", "required": true },
+      { "id": "f_section_path", "name": "section_path", "type": "string", "required": true },
+      { "id": "f_markdown", "name": "markdown", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_dq", "name": "disqualification_items", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_dq_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_dq_title", "name": "title", "type": "string", "required": true }
+      ]},
+      { "id": "f_sc", "name": "scoring_items", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_sc_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_sc_title", "name": "title", "type": "string", "required": true }
+      ]},
+      { "id": "f_br", "name": "bid_risk_items", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_br_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_br_title", "name": "title", "type": "string", "required": true }
+      ]},
+      { "id": "f_dr", "name": "directory_requirements", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_dr_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_dr_title", "name": "title", "type": "string", "required": true }
+      ]}
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "segment_id: {{segment_id}}\nsection_path: {{section_path}}\n\n正文:\n{{markdown}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+    "verify": {
+      "input": {
+        "segment_id": "seg-001",
+        "section_path": "第一章 > 投标人须知",
+        "markdown": "投标人须提供营业执照副本复印件。未按要求提交将被否决投标。技术方案满分30分，商务满分10分。"
+      }
+    }
+}

@@ -1,0 +1,41 @@
+{
+  "callType": "brief_segment",
+  "zhName": "招标概要（分片提取）",
+  "enName": "brief_segment",
+  "description": "长文档分片提取事实数组",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标文档事实提取助手。仅根据用户提供的正文客观提取关键事实。\n禁止推测、延伸解读。输出严格 JSON，字段均为字符串数组；本段未出现的类别返回空数组 []。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_index", "name": "segment_index", "type": "number", "required": true },
+      { "id": "f_total", "name": "segment_total", "type": "number", "required": true },
+      { "id": "f_markdown", "name": "markdown", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_ic", "name": "issuer_company", "type": "array", "required": true, "itemType": "string" },
+      { "id": "f_ps", "name": "procurement_subject", "type": "array", "required": true, "itemType": "string" },
+      { "id": "f_bi", "name": "budget_info", "type": "array", "required": true, "itemType": "string" },
+      { "id": "f_qr", "name": "qualification_requirements", "type": "array", "required": true, "itemType": "string" },
+      { "id": "f_kt", "name": "key_timelines", "type": "array", "required": true, "itemType": "string" }
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "分片 {{segment_index}}/{{segment_total}}\n请从本段正文提取下列事实：issuer_company, procurement_subject, budget_info, qualification_requirements, key_timelines\n\n正文:\n{{markdown}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "segment_index": 1,
+      "segment_total": 2,
+      "markdown": "招标人：某某科技有限公司。本次采购招标文档处理系统。"
+    }
+  }
+}
