@@ -93,8 +93,9 @@ class LLMClient(Protocol):
 | `LLM_PROVIDER` | 预设：`qwen` \| `openai` | `qwen` |
 | `LLM_MODEL` / `DOC_CHUNK_LLM_MODEL` | 文本模型覆盖 | qwen: `qwen3.7-max`；openai: `gpt-4o-mini` |
 | `LLM_BASE_URL` / `OPENAI_API_BASE` | API Base URL | qwen: DashScope 兼容端点 |
-| `LLM_STREAM` | 是否流式 | 见 `stream_logging.py` |
-| `LLM_THINKING` | DashScope Qwen 思考模式 | 见 `stream_logging.py` |
+| `LLM_STREAM` | 是否流式 | 默认 `true`（见 `stream_logging.py`） |
+| `LLM_ENABLE_THINKING` | DashScope Qwen 思考模式（`extra_body.enable_thinking`） | 默认 `false` |
+| `LLM_TIMEOUT` | 单次 LLM 请求超时（秒） | 默认 `300` |
 | `OCR_MODEL` | 视觉 OCR 模型 | `qwen-vl-ocr` |
 | `OCR_ENABLED` | 解读阶段 OCR | `true` |
 | `BRIEF_OCR_ENABLED` | 概要阶段 OCR | `false` |
@@ -108,7 +109,42 @@ class LLMClient(Protocol):
 | qwen | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen3.7-max` |
 | openai | `https://api.openai.com/v1` | `gpt-4o-mini` |
 
-DashScope 兼容端点自动附加 `extra_body.enable_thinking`（若 `LLM_THINKING` 开启）。
+DashScope 兼容端点自动附加 `extra_body.enable_thinking`（若 `LLM_ENABLE_THINKING=true`）。
+
+**模型解析优先级**（`resolve_llm_settings_from_env()`）：
+
+```
+model     = LLM_MODEL → DOC_CHUNK_LLM_MODEL → provider 预设 default
+base_url  = LLM_BASE_URL → OPENAI_API_BASE → provider 预设 default
+api_key   = LLM_API_KEY → OPENAI_API_KEY（必填）
+```
+
+所有文本类智能体（#1–#15）共用同一 `OpenAILLMClient` 实例，**运行时只绑定一个 model 字符串**；不存在 per-agent 模型分流（除非未来拆多个 client 或多套环境）。
+
+### 2.2.1 当前部署配置（项目根 `.env`，2026-07-05）
+
+以下为仓库本地 `.env` 中与非密钥相关的 LLM 配置快照（与 `.env.example` 一致）：
+
+| 变量 | 当前值 | 生效说明 |
+|------|--------|----------|
+| `LLM_PROVIDER` | `qwen` | 使用 DashScope 兼容预设 |
+| `LLM_MODEL` | `qwen3.7-max` | **15 个文本 agent 实际使用的模型** |
+| `LLM_BASE_URL` | （空） | 回退为 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `LLM_ENABLE_THINKING` | `false` | 不开启 Qwen 思考链 |
+| `LLM_STREAM` | `true` | 流式收集 completion |
+| `LLM_TIMEOUT` | `300` | 单次请求 300s 超时 |
+| `OCR_MODEL` | `qwen-vl-ocr` | **`ocr_image_recognize` 实际使用的模型** |
+| `OCR_ENABLED` | `true` | interpret 阶段 OCR 预处理开启 |
+| `BRIEF_OCR_ENABLED` | （未设置） | 默认 `false`，brief 阶段不 OCR |
+
+**当前模型分配一览**：
+
+| 模型 ID | 类型 | 使用的智能体 | API 端点 |
+|---------|------|-------------|----------|
+| `qwen3.7-max` | 文本 LLM | #1–#15（全部文本 call_type） | DashScope compatible-mode/v1 |
+| `qwen-vl-ocr` | 视觉 OCR | #16 `ocr_image_recognize` | 同上（`OcrClient` 共用 api_key / base_url） |
+
+> 若将智能体迁移至 **df-agent-os-python** 平台，模型在平台「模型管理」中单独绑定（如已发布的 `image_recognize` 应用当前绑 `qwen3.7-max` + multimodal URL 输入）；与本仓库 `.env` 相互独立，以各环境 Agent/Application 的 `modelId` 为准。
 
 ### 2.3 JSON 提取与重试
 
@@ -132,32 +168,34 @@ DashScope 兼容端点自动附加 `extra_body.enable_thinking`（若 `LLM_THINK
 
 ## 3. Agent 索引
 
-| # | call_type | 中文名 | 模块 | response_format | 默认 max_retries |
-|---|-----------|--------|------|-----------------|------------------|
-| 1 | `outline_refine` | 目录树优化 | doc_chunk | json | 2（引擎内循环） |
-| 2 | `chunk_classify` | 分块知识分类 | doc_chunk | json | 0 |
-| 3 | `chunk_describe` | 分块摘要生成 | doc_chunk | text | 0 |
-| 4 | `interpret_segment` | 招标文件分段解读 | interpret | json | 2 |
-| 5 | `interpret_scoring_table` | 评分表专项解读 | interpret | json | 2 |
-| 6 | `interpret_overview` | 解读概要合成 | interpret | json | 2 |
-| 7 | `brief_single` | 招标概要（单段） | brief | json | 2 |
-| 8 | `brief_segment` | 招标概要（分片提取） | brief | json | 2 |
-| 9 | `brief_merge` | 招标概要（分片合并） | brief | json | 2 |
-| 10 | `template_plan` | 模板提取计划 | template | json | 2 |
-| 11 | `template_extract` | 模板正文提取 | template | json | 2 |
-| 12 | `gen_catalog_initial` | 投标目录初始生成 | gen_catalog | json | 2 |
-| 13 | `gen_catalog_node_plan` | 目录节点优化评估 | gen_catalog | json | 2 |
-| 14 | `gen_catalog_node_apply` | 目录节点优化执行 | gen_catalog | json | 2 |
-| 15 | `legal_section_review` | 法务章节审核 | legal | json | 2 |
-| 16 | `ocr_image_recognize` | 图片 OCR 识别 | ocr | text（多模态） | 0 |
+| # | call_type | 中文名 | 模块 | 当前模型（.env） | response_format | max_retries |
+|---|-----------|--------|------|------------------|-----------------|-------------|
+| 1 | `outline_refine` | 目录树优化 | doc_chunk | `qwen3.7-max` | json | 2（引擎内循环） |
+| 2 | `chunk_classify` | 分块知识分类 | doc_chunk | `qwen3.7-max` | json | 0 |
+| 3 | `chunk_describe` | 分块摘要生成 | doc_chunk | `qwen3.7-max` | text | 0 |
+| 4 | `interpret_segment` | 招标文件分段解读 | interpret | `qwen3.7-max` | json | 2 |
+| 5 | `interpret_scoring_table` | 评分表专项解读 | interpret | `qwen3.7-max` | json | 2 |
+| 6 | `interpret_overview` | 解读概要合成 | interpret | `qwen3.7-max` | json | 2 |
+| 7 | `brief_single` | 招标概要（单段） | brief | `qwen3.7-max` | json | 2 |
+| 8 | `brief_segment` | 招标概要（分片提取） | brief | `qwen3.7-max` | json | 2 |
+| 9 | `brief_merge` | 招标概要（分片合并） | brief | `qwen3.7-max` | json | 2 |
+| 10 | `template_plan` | 模板提取计划 | template | `qwen3.7-max` | json | 2 |
+| 11 | `template_extract` | 模板正文提取 | template | `qwen3.7-max` | json | 2 |
+| 12 | `gen_catalog_initial` | 投标目录初始生成 | gen_catalog | `qwen3.7-max` | json | 2 |
+| 13 | `gen_catalog_node_plan` | 目录节点优化评估 | gen_catalog | `qwen3.7-max` | json | 2 |
+| 14 | `gen_catalog_node_apply` | 目录节点优化执行 | gen_catalog | `qwen3.7-max` | json | 2 |
+| 15 | `legal_section_review` | 法务章节审核 | legal | `qwen3.7-max` | json | 2 |
+| 16 | `ocr_image_recognize` | 图片 OCR 识别 | ocr | `qwen-vl-ocr` | text（多模态） | 0 |
 
-> **模型列**：除 OCR 使用 `OCR_MODEL`（默认 `qwen-vl-ocr`）外，其余均使用 `LLM_MODEL` 环境变量解析结果。
+> **模型来源**：#1–#15 读 `LLM_MODEL`（当前 `qwen3.7-max`）；#16 读 `OCR_MODEL`（当前 `qwen-vl-ocr`）。实际调用 model 名亦记录在 `llm_calls.jsonl` 的 `attempt.model` 字段。
 
 ---
 
 ## 4. Agent 详细规格
 
 以下每个 Agent 使用统一 Card 格式。Pydantic 模型源码路径供实现参考。
+
+**当前模型默认值（§2.2.1）**：除 §4.16 OCR 外，下列所有 agent 的 **模型** 均为 `qwen3.7-max`（`LLM_MODEL`）；Card 中若仍写 `LLM_MODEL` 即指该值，随 `.env` 变更而变。
 
 ---
 
@@ -168,9 +206,9 @@ DashScope 兼容端点自动附加 `extra_body.enable_thinking`（若 `LLM_THINK
 | **call_type** | `outline_refine` |
 | **功能** | 根据用户自然语言指令，在保持可追溯性的前提下优化文档目录树（merge/split/reparent/rename/keep） |
 | **触发条件** | `doc_chunk.api.refine_outline()` 被调用，且 refine session 处于 active |
-| **模型** | `LLM_MODEL`（默认 `qwen3.7-max`） |
+| **模型** | `qwen3.7-max`（`LLM_MODEL`；provider `qwen`） |
 | **response_format** | `json` |
-| **timeout** | 60s |
+| **timeout** | 60s（agent 级）；全局 `LLM_TIMEOUT=300` |
 | **max_retries** | 2（引擎内循环，含 schema + 映射校验） |
 | **源码** | `src/doc_chunk/outline_refine/engine.py` |
 | **Prompt 文件** | `src/doc_chunk/llm/prompts/outline_refine.txt` |
@@ -933,9 +971,9 @@ Viewer: InterpretPipelineService.run_job
 | **call_type** | `ocr_image_recognize` |
 | **功能** | 识别文档内嵌图片中的文字，按阅读顺序输出纯文本 |
 | **触发条件** | `prepare_interpret_source` / brief 阶段 `ocr_enabled` 时对图片调用 |
-| **模型** | `OCR_MODEL`（默认 `qwen-vl-ocr`） |
-| **接口** | 多模态 Chat Completions（非 LLMClient 协议） |
-| **timeout** | 120s |
+| **模型** | `qwen-vl-ocr`（`OCR_MODEL`；与文本 LLM 共用 `LLM_API_KEY` / DashScope base_url） |
+| **接口** | 多模态 Chat Completions（`OcrClient`，非 `LLMClient` 协议） |
+| **timeout** | 120s（hardcoded） |
 | **max_retries** | 0 |
 | **源码** | `src/tender_insights/common/ocr/client.py` |
 
