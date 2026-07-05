@@ -1,7 +1,7 @@
 # Agent Platform Invoke 设计
 
 > 日期：2026-07-06  
-> 状态：待实现  
+> 状态：已实现（2026-07-06）  
 > 范围：将 tender_skills 业务层的大模型调用从「内嵌 prompt + LLMClient」迁移为「统一 invoke 接口 + df-agent-os 平台 API」，以 `outline_refine` 为试点。
 
 ---
@@ -296,7 +296,7 @@ if not isinstance(payload, dict):
 
 ## 11. 验收标准（outline_refine 试点）
 
-- [ ] `AGENT_INVOKE_MODE=local`（默认）：现有单元测试与 integration refine CLI 测试全部通过
-- [ ] `AGENT_INVOKE_MODE=platform`：对已 provision 的 `outline_refine` 调用成功，Engine 校验通过
-- [ ] `AgentClient.invoke("outline_refine", {...})` 请求/响应格式 documented 且可被后续 call_type 复用
-- [ ] 无 `llm_client.complete` 直接调用残留在 `OutlineRefineEngine`
+- [x] `AGENT_INVOKE_MODE=local`（默认）：现有单元测试与 integration refine CLI 测试全部通过
+- [x] `AGENT_INVOKE_MODE=platform`：对已 provision 的 `outline_refine` 调用成功，Engine 校验通过
+- [x] `AgentClient.invoke("outline_refine", {...})` 请求/响应格式 documented 且可被后续 call_type 复用
+- [x] 无 `llm_client.complete` 直接调用残留在 `OutlineRefineEngine`
