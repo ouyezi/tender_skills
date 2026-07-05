@@ -13,6 +13,7 @@ from doc_chunk.extract.detect import detect_file_type
 from doc_chunk.extract.docx_extractor import extract_docx
 from doc_chunk.extract.pdf_extractor import extract_pdf
 from doc_chunk.llm.client import LLMClient
+from agent_platform.factory import create_agent_client_from_env
 from doc_chunk.llm.openai_client import create_llm_client_from_env
 from doc_chunk.metadata.classify import classify_chunk
 from doc_chunk.metadata.describe import describe_chunk
@@ -266,11 +267,9 @@ def refine_outline(
     if not instruction.strip():
         raise ValidationError("instruction cannot be empty")
 
-    client = llm_client
-    if client is None:
-        client = create_llm_client_from_env()
+    agent_client = create_agent_client_from_env(llm_client=llm_client)
 
-    engine = OutlineRefineEngine(llm_client=client, strict=strict, max_retries=2)
+    engine = OutlineRefineEngine(agent_client=agent_client, strict=strict, max_retries=2)
     refined, mapping, summary, preview = engine.run_round(session=current_session, instruction=instruction)
 
     current_session.current_refined = refined
