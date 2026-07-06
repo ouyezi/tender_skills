@@ -1,6 +1,6 @@
 # tender_skills
 
-标书文档处理 monorepo：`doc_chunk`（提取与切片）+ `tender_insights`（招标语义分析）+ `viewer`（本机调试 UI）。
+标书文档处理 monorepo：`doc_chunk`（提取与切片）+ `tender_insights`（招标语义分析）+ `agent_platform`（统一 LLM/OCR invoke）+ `viewer`（本机调试 UI）。
 
 **`doc_chunk`** 将 Word/PDF 标书处理为结构化工作区，供下游 agent 与 `tender_insights` 消费。
 
@@ -337,7 +337,7 @@ doc.save("out.docx")
 
 ## LLM 配置
 
-目录优化（`refine`）与元数据 LLM 描述（`enrich` 默认开启时）需要大模型；**提取、目录树、文档树、分块不需要**。
+目录优化（`refine`）与元数据 LLM 描述（`enrich` 默认开启时）需要大模型；**提取、目录树、文档树、分块不需要**。所有大模型调用经 `agent_platform.AgentClient.invoke`（默认 local handler，亦可切 platform）。
 
 与 `tender_knowledge` 共用环境变量（默认 **千问 Qwen** 兼容 OpenAI 接口）：
 
@@ -345,17 +345,25 @@ doc.save("out.docx")
 export LLM_PROVIDER=qwen
 export LLM_API_KEY=sk-...
 export LLM_BASE_URL=                    # 留空则用 DashScope 兼容端点
-export LLM_MODEL=qwen3.6-plus           # 留空则 qwen-plus
+export LLM_MODEL=qwen3.7-max            # 见 .env.example
+
+# Agent 调用通道（可选）
+export AGENT_INVOKE_MODE=local          # local | platform
+export AGENT_PLATFORM_BASE_URL=http://localhost:8000
 ```
 
-或复制 `tender_knowledge/.env` 后 `set -a && source .env && set +a`。
+或复制项目根 `.env.example` 为 `.env` 后填入 `LLM_API_KEY`。
 
 | 变量 | 默认（`LLM_PROVIDER=qwen`） |
 |------|---------------------------|
 | `LLM_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `LLM_MODEL` | `qwen-plus` |
+| `LLM_MODEL` | `qwen3.7-max`（见 provider 预设） |
+| `AGENT_INVOKE_MODE` | `local` |
+| `AGENT_PLATFORM_BASE_URL` | `http://localhost:8000` |
 
 仍支持旧变量：`OPENAI_API_KEY`、`OPENAI_API_BASE`、`DOC_CHUNK_LLM_MODEL`。
+
+智能体规格与 call_type 清单见 [`docs/agent_requirements.md`](docs/agent_requirements.md)。platform 模式需先 `scripts/provision_agent.py` 注册 Application。
 
 | 场景 | 无 API Key 时 |
 |------|----------------|
@@ -554,6 +562,10 @@ export SEGMENT_MAX_TOKENS=12000
 # interpret 调试日志（可选）
 export INTERPRET_LOG_PROMPTS=1          # 设为 0 关闭 stderr 日志
 export INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts  # 额外按段写入 JSON 文件
+
+# Agent 调用通道（可选，默认 local）
+export AGENT_INVOKE_MODE=local
+export AGENT_PLATFORM_BASE_URL=http://localhost:8000
 ```
 
 可与 `tender_knowledge` 共用同一 `.env`（`LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL`）。
@@ -570,6 +582,8 @@ export INTERPRET_LOG_PROMPTS_DIR=/tmp/interpret-prompts  # 额外按段写入 JS
 | `INTERPRET_LOG_PROMPTS_DIR` | （未设置） | 若设置，额外将每次调用写入 `{segment_id}.json` |
 | `BRIEF_CHUNK_CHAR_LIMIT` | `20000` | `brief` 全文分片阈值（字符） |
 | `BRIEF_SUMMARY_MAX_CHARS` | `500` | `brief` 概要字数上限 |
+| `AGENT_INVOKE_MODE` | `local` | `local` 走 handlers；`platform` 调 df-agent-os |
+| `AGENT_PLATFORM_BASE_URL` | `http://localhost:8000` | platform 模式平台根地址 |
 
 ### Python API
 
@@ -604,7 +618,7 @@ extract_templates(ws)
 review_legal(ws)
 ```
 
-测试时可注入 `FakeLLMClient`（见 `doc_chunk.llm.client`）。
+测试时可注入 `AgentClient(LocalBackend(llm_client=FakeLLMClient(...)))`（见 `agent_platform` 与 `doc_chunk.llm.client`）。
 
 ### Cursor Skills 索引
 

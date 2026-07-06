@@ -1,7 +1,7 @@
 # Agent Platform Invoke 设计
 
 > 日期：2026-07-06  
-> 状态：已实现（2026-07-06）  
+> 状态：已实现（2026-07-06）；其余 15 个 call_type 见 `2026-07-06-agent-platform-migrate-remaining-design.md`（Batch A–E 已全部落地）  
 > 范围：将 tender_skills 业务层的大模型调用从「内嵌 prompt + LLMClient」迁移为「统一 invoke 接口 + df-agent-os 平台 API」，以 `outline_refine` 为试点。
 
 ---
@@ -11,8 +11,8 @@
 ### 1.1 现状
 
 - 16 个 `call_type` 已通过 `scripts/provision_agent.py` 注册到 **df-agent-os-python**，可通过 `POST /v1/apps/invoke` 调用（`appName` = `enName` = `call_type`）。
-- 业务代码仍直接调用 `LLMClient.complete()`，自行组装 messages、解析 JSON、做校验与重试。
-- `docs/agent_requirements.md` §7.1 已有 `AgentRegistry.invoke(call_type, input)` 草案，尚未落地。
+- （变更前）业务代码曾直接调用 `LLMClient.complete()`，自行组装 messages、解析 JSON、做校验与重试。
+- 现状：`AgentClient.invoke(call_type, input)` 已落地（`src/agent_platform/`）；规格见 `docs/agent_requirements.md` §7。
 
 ### 1.2 目标
 
@@ -266,30 +266,27 @@ if not isinstance(payload, dict):
 
 ---
 
-## 9. 后续迁移（15 个 call_type）
+## 9. 后续迁移（15 个 call_type）— 已完成
 
-每个 call_type 迁移步骤相同：
+其余 call_type 按同一模式迁移，详见 `docs/superpowers/specs/2026-07-06-agent-platform-migrate-remaining-design.md`（Batch A–E **已全部落地**）：
 
-1. 在 `agent_platform/handlers/` 增加 local handler（从现有 extractor 提取 prompt + LLM 调用）
-2. 业务层将 `llm_client.complete(...)` 替换为 `agent_client.invoke(call_type, input_dict)`
-3. 核对 `scripts/agents/{call_type}.json` 的 inputSchema 与 handler 输入一致
-4. 补充 handler 单元测试；可选 platform 集成验证
+1. A：`chunk_classify`、`chunk_describe`、`ocr_image_recognize`
+2. B：`interpret_segment`、`interpret_scoring_table`、`interpret_overview`
+3. C：`brief_single`、`brief_segment`、`brief_merge`
+4. D：`gen_catalog_initial`、`gen_catalog_node_plan`、`gen_catalog_node_apply`
+5. E：`template_plan`、`template_extract`、`legal_section_review`
 
-**建议顺序**（与 `docs/agent_requirements.md` §7.2 一致）：
-
-1. `chunk_classify`、`chunk_describe`、`ocr_image_recognize`
-2. `interpret_segment`、`interpret_scoring_table`、`interpret_overview`
-3. `brief_single`、`brief_segment`、`brief_merge`
-4. `gen_catalog_initial`、`gen_catalog_node_plan`、`gen_catalog_node_apply`
-5. `template_plan`、`template_extract`、`legal_section_review`
+运行时规格见 `docs/agent_requirements.md` §7。
 
 ---
 
 ## 10. 非目标
 
+（以下为本试点文档范围；除「仅迁 outline_refine」外，其余约束在全量迁移后仍成立。）
+
 - 不在本阶段重构 `scripts/provision_agent.py`（可选后续将 HTTP 客户端抽到 `agent_platform` 复用）
 - 不在平台内实现 `OutlineMappingValidator` 等业务后处理
-- 不在本阶段迁移除 `outline_refine` 外的 call_type
+- ~~不在本阶段迁移除 `outline_refine` 外的 call_type~~ → 已由 migrate-remaining 设计覆盖并完成
 - 不引入 typed Registry（每 call_type Input/Output 模型）；保留薄封装，业务层继续 pydantic 校验
 
 ---

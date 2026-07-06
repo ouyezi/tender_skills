@@ -1,5 +1,7 @@
 # Tender Skills 智能体平台 Provision 实现计划
 
+> **状态：已完成（2026-07-05）** — `scripts/provision_agent.py` + `scripts/agents/*.json` 已落地。下列 checkbox 为历史实施步骤。
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 用 `scripts/provision_agent.py` + 16 个 JSON 配置，将 tender_skills 全部 call_type 注册到 df-agent-os-python（Agent + Application），并通过 `/v1/apps/invoke` 验证返回格式。

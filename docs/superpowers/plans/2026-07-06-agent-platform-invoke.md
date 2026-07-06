@@ -1,5 +1,7 @@
 # Agent Platform Invoke 实现计划
 
+> **状态：已完成（2026-07-06）** — 试点 `outline_refine` 已落地；其余 15 个 call_type 见 migrate-remaining 设计（Batch A–E）。下列 checkbox 为历史实施步骤，无需再执行。
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 新增 `agent_platform` 包，提供统一的 `AgentClient.invoke()` 接口，并将 `outline_refine` 从直接 `LLMClient.complete()` 迁移为 invoke 调用，支持 `AGENT_INVOKE_MODE=local|platform` 切换且默认行为不变。

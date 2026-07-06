@@ -1,8 +1,9 @@
 # Agent Requirements — 大模型智能体规格说明书
 
-> 版本：2026-07-05  
+> 版本：2026-07-06  
 > 目的：梳理 tender_skills 项目中全部大模型调用点，为「业务流程 ↔ 智能体」解耦提供可执行的 agent 规格。  
-> 粒度：**1 call_type = 1 独立智能体**（共 16 个）。
+> 粒度：**1 call_type = 1 独立智能体**（共 16 个）。  
+> 运行时：全部 call_type 已通过 `AgentClient.invoke(call_type, input)` 统一调用（`src/agent_platform/`；详见 §7）。
 
 ---
 
@@ -10,34 +11,36 @@
 
 ### 1.1 项目定位
 
-tender_skills 是招标文档处理流水线，分为两大 Python 包：
+tender_skills 是招标文档处理流水线，分为三大 Python 包：
 
 | 包 | 职责 |
 |----|------|
 | `doc_chunk` | DOCX/PDF 提取、目录树构建、分块、元数据增强 |
 | `tender_insights` | 招标解读、概要、模板提取、法务审核、投标目录生成 |
+| `agent_platform` | 统一 invoke：local handler / df-agent-os platform |
 
 大模型（LLM）贯穿提取后的增强与洞察阶段；视觉模型（OCR）用于图片文字识别。
 
-### 1.2 解耦目标
+### 1.2 解耦架构（已落地）
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  业务编排层（Pipeline / CLI / Viewer API）               │
-│  只负责：准备输入 artifact → 调用 agent → 持久化输出      │
+│  只负责：准备 input dict → invoke → pydantic 校验 / 持久化 │
 └──────────────────────────┬──────────────────────────────┘
-                           │ AgentRegistry.invoke(call_type, input)
+                           │ AgentClient.invoke(call_type, input)
 ┌──────────────────────────▼──────────────────────────────┐
-│  智能体层（16 个 call_type，本文档定义）                  │
-│  只负责：messages 组装 → LLM 调用 → JSON/文本解析         │
+│  agent_platform（16 个 call_type）                        │
+│  LocalBackend：handlers 组装 messages → LLM/OCR          │
+│  PlatformBackend：POST /v1/apps/invoke                   │
 └──────────────────────────┬──────────────────────────────┘
-                           │ LLMClient / OcrClient
+                           │ local: LLMClient / OcrClient
 ┌──────────────────────────▼──────────────────────────────┐
-│  LLM 基础设施（OpenAILLMClient、环境变量、重试、日志）    │
+│  LLM 基础设施（OpenAILLMClient、环境变量、日志）           │
 └─────────────────────────────────────────────────────────┘
 ```
 
-业务代码**不应**内嵌 prompt 字符串；prompt 与 schema 由 agent 规格统一管理。
+业务代码**不**直接调用 `LLMClient.complete`；prompt 组装在 `agent_platform/handlers/{call_type}.py`（local）或平台 Agent 配置（platform）。契约以 `scripts/agents/{call_type}.json` 的 `inputSchema` / `enName` 为准。
 
 ### 1.3 端到端流水线
 
@@ -83,7 +86,7 @@ class LLMClient(Protocol):
     def complete_with_meta(...) -> LLMCompletionResult: ...
 ```
 
-工厂函数：`create_llm_client_from_env()` → `OpenAILLMClient`（OpenAI 兼容 API）。
+工厂函数：`create_llm_client_from_env()` → `OpenAILLMClient`（OpenAI 兼容 API），供 **local** handler 使用。业务入口优先 `create_agent_client_from_env()`（见 §7）。
 
 ### 2.2 环境变量与模型配置
 
@@ -101,6 +104,8 @@ class LLMClient(Protocol):
 | `BRIEF_OCR_ENABLED` | 概要阶段 OCR | `false` |
 | `INTERPRET_LOG_JSONL` | LLM 调用日志路径 | workspace 内 `llm_calls.jsonl` |
 | `INTERPRET_LOG_PROMPTS` | 是否记录 prompt | `true` |
+| `AGENT_INVOKE_MODE` | agent 调用通道：`local` \| `platform` | `local` |
+| `AGENT_PLATFORM_BASE_URL` | platform 模式平台地址 | `http://localhost:8000` |
 
 **Provider 预设**（`openai_client.py`）：
 
@@ -119,42 +124,54 @@ base_url  = LLM_BASE_URL → OPENAI_API_BASE → provider 预设 default
 api_key   = LLM_API_KEY → OPENAI_API_KEY（必填）
 ```
 
-所有文本类智能体（#1–#15）共用同一 `OpenAILLMClient` 实例，**运行时只绑定一个 model 字符串**；不存在 per-agent 模型分流（除非未来拆多个 client 或多套环境）。
+所有文本类智能体（#1–#15）在 **local 模式**下共用同一 `OpenAILLMClient` 实例，**运行时只绑定一个 model 字符串**；不存在 per-agent 模型分流（除非未来拆多个 client 或多套环境）。**platform 模式**下模型由 df-agent-os 各 Application 的 `modelId` 决定，与 `.env` 独立。
 
-### 2.2.1 当前部署配置（项目根 `.env`，2026-07-05）
+### 2.2.1 当前部署配置（项目根 `.env`，2026-07-06）
 
-以下为仓库本地 `.env` 中与非密钥相关的 LLM 配置快照（与 `.env.example` 一致）：
+以下为仓库本地 `.env` 中与非密钥相关的配置快照（与 `.env.example` 一致）：
 
 | 变量 | 当前值 | 生效说明 |
 |------|--------|----------|
-| `LLM_PROVIDER` | `qwen` | 使用 DashScope 兼容预设 |
-| `LLM_MODEL` | `qwen3.7-max` | **15 个文本 agent 实际使用的模型** |
+| `LLM_PROVIDER` | `qwen` | 使用 DashScope 兼容预设（local 模式） |
+| `LLM_MODEL` | `qwen3.7-max` | **15 个文本 agent 实际使用的模型**（local） |
 | `LLM_BASE_URL` | （空） | 回退为 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `LLM_ENABLE_THINKING` | `false` | 不开启 Qwen 思考链 |
 | `LLM_STREAM` | `true` | 流式收集 completion |
 | `LLM_TIMEOUT` | `300` | 单次请求 300s 超时 |
-| `OCR_MODEL` | `qwen-vl-ocr` | **`ocr_image_recognize` 实际使用的模型** |
+| `OCR_MODEL` | `qwen-vl-ocr` | **`ocr_image_recognize` 实际使用的模型**（local） |
 | `OCR_ENABLED` | `true` | interpret 阶段 OCR 预处理开启 |
 | `BRIEF_OCR_ENABLED` | （未设置） | 默认 `false`，brief 阶段不 OCR |
+| `AGENT_INVOKE_MODE` | `local` | 默认走 LocalBackend；切 `platform` 时调平台 API |
+| `AGENT_PLATFORM_BASE_URL` | `http://localhost:8000` | platform 模式平台根地址 |
 
-**当前模型分配一览**：
+**当前模型分配一览（local 模式）**：
 
 | 模型 ID | 类型 | 使用的智能体 | API 端点 |
 |---------|------|-------------|----------|
 | `qwen3.7-max` | 文本 LLM | #1–#15（全部文本 call_type） | DashScope compatible-mode/v1 |
 | `qwen-vl-ocr` | 视觉 OCR | #16 `ocr_image_recognize` | 同上（`OcrClient` 共用 api_key / base_url） |
 
-> 若将智能体迁移至 **df-agent-os-python** 平台，模型在平台「模型管理」中单独绑定（如已发布的 `image_recognize` 应用当前绑 `qwen3.7-max` + multimodal URL 输入）；与本仓库 `.env` 相互独立，以各环境 Agent/Application 的 `modelId` 为准。
+> **platform 模式**（`AGENT_INVOKE_MODE=platform`）：模型在平台「模型管理」中单独绑定；需先用 `scripts/provision_agent.py` 注册 16 个 Application。与本仓库 `.env` 的 `LLM_*` 相互独立，以各环境 Agent/Application 的 `modelId` 为准。
 
-### 2.3 JSON 提取与重试
+### 2.3 JSON / 文本提取与重试
 
-`tender_insights.common.llm_extractor.extract_json_model`：
+业务侧通过统一 helper 调用，**同 input 盲重试**（校验失败**不**把错误反馈写回 messages）：
 
-- 调用 `client.complete_with_meta(..., response_format="json")`
-- Pydantic `model_validate` 校验
-- 失败时将错误追加到 messages 并重试，默认 `max_retries=2`（共 3 次尝试）
-- `InterpretationLLMResponse` 额外走 `normalize_interpretation_llm_data` 归一化
-- 成功/失败均写入 `llm_calls.jsonl`（若配置了 `log_context`）
+| Helper | 位置 | 用途 |
+|--------|------|------|
+| `invoke_json_model` | `agent_platform.structured` | doc_chunk 等：`structured_output` → pydantic |
+| `invoke_text` | `agent_platform.structured` | `chunk_describe` / `ocr_image_recognize` → `text_output` |
+| `extract_json_via_agent` | `tender_insights.common.agent_extractor` | insights：同上 + `llm_calls.jsonl` 日志 |
+
+行为摘要：
+
+1. `agent_client.invoke(call_type, input)`（每次同一 `input`）。
+2. JSON 类：取 `structured_output`；可选 `normalize(data)`（interpret 用 `normalize_interpretation_llm_data`）；`model_type.model_validate`。
+3. 文本类：取 `text_output`。
+4. `AgentInvokeError` / 非法 JSON / `ValidationError`：进入下一次盲重试（默认 `max_retries=2`，共 3 次）。
+5. insights 路径成功/失败写入 `llm_calls.jsonl`（若配置 `log_context`）；耗尽后抛 `LLMExtractionError`。
+
+> 遗留 `tender_insights.common.llm_extractor.extract_json_model`（直接 `LLMClient.complete` + 将错误追加进 messages）**已无调用方**，勿再使用。
 
 ### 2.4 日志规范（llm_calls.jsonl）
 
@@ -187,7 +204,7 @@ api_key   = LLM_API_KEY → OPENAI_API_KEY（必填）
 | 15 | `legal_section_review` | 法务章节审核 | legal | `qwen3.7-max` | json | 2 |
 | 16 | `ocr_image_recognize` | 图片 OCR 识别 | ocr | `qwen-vl-ocr` | text（多模态） | 0 |
 
-> **模型来源**：#1–#15 读 `LLM_MODEL`（当前 `qwen3.7-max`）；#16 读 `OCR_MODEL`（当前 `qwen-vl-ocr`）。实际调用 model 名亦记录在 `llm_calls.jsonl` 的 `attempt.model` 字段。
+> **模型来源（local 模式）**：#1–#15 读 `LLM_MODEL`（当前 `qwen3.7-max`）；#16 读 `OCR_MODEL`（当前 `qwen-vl-ocr`）。实际调用 model 名亦记录在 `llm_calls.jsonl` 的 `attempt.model` 字段（platform 模式常为 `null`）。全部 call_type 经 `AgentClient.invoke`；handler 在 `src/agent_platform/handlers/`。
 
 ---
 
@@ -210,7 +227,7 @@ api_key   = LLM_API_KEY → OPENAI_API_KEY（必填）
 | **response_format** | `json` |
 | **timeout** | 60s（agent 级）；全局 `LLM_TIMEOUT=300` |
 | **max_retries** | 2（引擎内循环，含 schema + 映射校验） |
-| **源码** | `src/doc_chunk/outline_refine/engine.py` |
+| **源码** | handler: `src/agent_platform/handlers/outline_refine.py`；业务: `src/doc_chunk/outline_refine/engine.py` |
 | **Prompt 文件** | `src/doc_chunk/llm/prompts/outline_refine.txt` |
 
 **System Prompt（全文）**：
@@ -261,7 +278,9 @@ api_key   = LLM_API_KEY → OPENAI_API_KEY（必填）
 **调用链**：
 
 ```
-CLI/Viewer → doc_chunk.api.refine_outline → OutlineRefineEngine.run_round → LLMClient.complete
+CLI/Viewer → doc_chunk.api.refine_outline
+  → create_agent_client_from_env → OutlineRefineEngine.run_round
+  → AgentClient.invoke("outline_refine", input)
 ```
 
 **产出物**：`outline_refined.json`、`outline_mapping.json`、`outline_refine_summary.md`
@@ -274,12 +293,12 @@ CLI/Viewer → doc_chunk.api.refine_outline → OutlineRefineEngine.run_round �
 |------|-----|
 | **call_type** | `chunk_classify` |
 | **功能** | 当规则引擎无法匹配时，用 LLM 对文档块进行知识类型分类 |
-| **触发条件** | `classify_chunk()` 规则匹配失败且 `llm_client` 非空 |
-| **模型** | `LLM_MODEL` |
+| **触发条件** | `classify_chunk()` 规则匹配失败且 `agent_client` 可用 |
+| **模型** | `LLM_MODEL`（local） |
 | **response_format** | `json` |
 | **timeout** | 60s |
 | **max_retries** | 0 |
-| **源码** | `src/doc_chunk/metadata/classify.py` |
+| **源码** | handler: `src/agent_platform/handlers/chunk_classify.py`；业务: `src/doc_chunk/metadata/classify.py` |
 
 **System Prompt**：无（单条 user message）
 
@@ -312,7 +331,7 @@ CLI/Viewer → doc_chunk.api.refine_outline → OutlineRefineEngine.run_round �
 **调用链**：
 
 ```
-doc_chunk.api.enrich_chunks → classify_chunk → _llm_classify → LLMClient.complete
+doc_chunk.api.enrich_chunks → classify_chunk → invoke_json_model("chunk_classify", …)
 ```
 
 **产出物**：写入 `chunk_index.json` 各 chunk 的 classification 字段
@@ -330,7 +349,7 @@ doc_chunk.api.enrich_chunks → classify_chunk → _llm_classify → LLMClient.c
 | **response_format** | `text` |
 | **timeout** | 60s |
 | **max_retries** | 0 |
-| **源码** | `src/doc_chunk/metadata/describe.py` |
+| **源码** | handler: `src/agent_platform/handlers/chunk_describe.py`；业务: `src/doc_chunk/metadata/describe.py` |
 
 **System Prompt**：无
 
@@ -359,7 +378,7 @@ doc_chunk.api.enrich_chunks → classify_chunk → _llm_classify → LLMClient.c
 **调用链**：
 
 ```
-doc_chunk.api.enrich_chunks → describe_chunk → LLMClient.complete
+doc_chunk.api.enrich_chunks → describe_chunk → invoke_text("chunk_describe", …)
 ```
 
 **产出物**：`chunk_index.json` 各 chunk 的 `description` 字段
@@ -376,7 +395,7 @@ doc_chunk.api.enrich_chunks → describe_chunk → LLMClient.complete
 | **模型** | `LLM_MODEL` |
 | **response_format** | `json` |
 | **max_retries** | 2 |
-| **源码** | `src/tender_insights/interpret/extractor.py`、`prompts.py` |
+| **源码** | handler: `src/agent_platform/handlers/interpret_segment.py`；业务: `src/tender_insights/interpret/extractor.py`、`prompts.py` |
 | **输出模型** | `InterpretationLLMResponse`（`interpret/models.py`） |
 
 **System Prompt（全文）**：
@@ -428,7 +447,8 @@ section_path: {path1 > path2 > ...}
 **调用链**：
 
 ```
-tender_insights.api.run_interpret_job → interpret_workspace → extract_json_model
+tender_insights.api.run_interpret_job → interpret_workspace
+  → extract_json_via_agent("interpret_segment"|"interpret_scoring_table", …)
 Viewer: InterpretPipelineService.run_job
 ```
 
@@ -438,7 +458,7 @@ Viewer: InterpretPipelineService.run_job
 
 | 属性 | 值 |
 |------|-----|
-| **call_type** | `interpret_scoring_table`（日志中 call_type=`scoring_table`） |
+| **call_type** | `interpret_scoring_table`（日志与 invoke 均用此名） |
 | **功能** | 专用于 `seg-scoring-*` 分段的评分表提取 |
 | **触发条件** | `segment_id.startswith("seg-scoring-")` |
 | **模型 / format / System Prompt** | 与 `interpret_segment` 相同 |
@@ -446,7 +466,7 @@ Viewer: InterpretPipelineService.run_job
 
 **输入/输出 Schema**：同 `interpret_segment`。
 
-**源码**：`interpret/prompts.py` → `_SCORING_TABLE_ONLY_APPENDIX`
+**源码**：handler: `src/agent_platform/handlers/interpret_scoring_table.py`；prompt 附录: `interpret/prompts.py` → `_SCORING_TABLE_ONLY_APPENDIX`
 
 ---
 
@@ -460,7 +480,7 @@ Viewer: InterpretPipelineService.run_job
 | **模型** | `LLM_MODEL` |
 | **response_format** | `json` |
 | **max_retries** | 2 |
-| **源码** | `src/tender_insights/interpret/overview.py` |
+| **源码** | handler: `src/agent_platform/handlers/interpret_overview.py`；业务: `src/tender_insights/interpret/overview.py` |
 
 **System Prompt（全文）**：
 
@@ -512,7 +532,7 @@ Viewer: InterpretPipelineService.run_job
 | **模型** | `LLM_MODEL` |
 | **response_format** | `json` |
 | **max_retries** | 2 |
-| **源码** | `src/tender_insights/brief/extractor.py`、`prompts.py` |
+| **源码** | handlers: `src/agent_platform/handlers/brief_{single,segment,merge}.py`；业务: `src/tender_insights/brief/extractor.py`、`prompts.py` |
 
 **System Prompt（全文）**：
 
@@ -664,7 +684,7 @@ Viewer: InterpretPipelineService.run_job
 | **模型** | `LLM_MODEL` |
 | **response_format** | `json` |
 | **max_retries** | 2 |
-| **源码** | `src/tender_insights/template/planner.py` |
+| **源码** | handler: `src/agent_platform/handlers/template_plan.py`；业务: `src/tender_insights/template/planner.py` |
 
 **System Prompt（全文）**：
 
@@ -715,7 +735,7 @@ Viewer: InterpretPipelineService.run_job
 | **模型** | `LLM_MODEL` |
 | **response_format** | `json` |
 | **max_retries** | 2 |
-| **源码** | `src/tender_insights/template/extractor.py` |
+| **源码** | handler: `src/agent_platform/handlers/template_extract.py`；业务: `src/tender_insights/template/extractor.py` |
 
 **System Prompt（全文）**：
 
@@ -766,7 +786,7 @@ Viewer: InterpretPipelineService.run_job
 | **模型** | `LLM_MODEL` |
 | **response_format** | `json` |
 | **max_retries** | 2 |
-| **源码** | `src/tender_insights/gen_catalog/extractor.py`、`prompts.py`、`context.py` |
+| **源码** | handlers: `src/agent_platform/handlers/gen_catalog_{initial,node_plan,node_apply}.py`；业务: `src/tender_insights/gen_catalog/extractor.py`、`prompts.py`、`context.py` |
 
 **System Prompt（全文）**：
 
@@ -921,7 +941,7 @@ Viewer: InterpretPipelineService.run_job
 | **模型** | `LLM_MODEL` |
 | **response_format** | `json` |
 | **max_retries** | 2 |
-| **源码** | `src/tender_insights/legal/extractor.py`、`prompts.py` |
+| **源码** | handler: `src/agent_platform/handlers/legal_section_review.py`；业务: `src/tender_insights/legal/extractor.py`、`prompts.py` |
 
 **System Prompt（全文）**：
 
@@ -972,10 +992,10 @@ Viewer: InterpretPipelineService.run_job
 | **功能** | 识别文档内嵌图片中的文字，按阅读顺序输出纯文本 |
 | **触发条件** | `prepare_interpret_source` / brief 阶段 `ocr_enabled` 时对图片调用 |
 | **模型** | `qwen-vl-ocr`（`OCR_MODEL`；与文本 LLM 共用 `LLM_API_KEY` / DashScope base_url） |
-| **接口** | 多模态 Chat Completions（`OcrClient`，非 `LLMClient` 协议） |
+| **接口** | `AgentClient.invoke("ocr_image_recognize", {"image_url": ...})`；local 下 handler 调 `OcrClient`（多模态 Chat Completions） |
 | **timeout** | 120s（hardcoded） |
 | **max_retries** | 0 |
-| **源码** | `src/tender_insights/common/ocr/client.py` |
+| **源码** | handler: `src/agent_platform/handlers/ocr_image_recognize.py`；OCR 实现: `src/tender_insights/common/ocr/client.py`；业务: `src/tender_insights/common/ocr/enricher.py` |
 
 **Prompt（user message，多模态）**：
 
@@ -1002,7 +1022,7 @@ Viewer: InterpretPipelineService.run_job
 |------|------|
 | text | string |
 
-**调用链**：`OcrClient.from_env(model=config.ocr_model).recognize_image_bytes()`
+**调用链**：`enricher` → `invoke_text("ocr_image_recognize", {"image_url": "data:{mime};base64,..."})` → local handler `OcrClient.recognize_image_url` / platform `/v1/apps/invoke`
 
 ---
 
@@ -1056,45 +1076,66 @@ directory_requirements:
 
 ### 6.4 CLI
 
-通过 `tender_insights` 与 `doc_chunk` 模块 CLI 间接调用上述 API；LLM 客户端默认 `create_llm_client_from_env()`。
+通过 `tender_insights` 与 `doc_chunk` 模块 CLI 间接调用上述 API；入口默认 `create_agent_client_from_env()`（由 `AGENT_INVOKE_MODE` 决定 local / platform）。
 
 ---
 
-## 7. 解耦实施建议
+## 7. 运行时：AgentClient（已落地）
 
-### 7.1 Agent Registry 接口草案
+设计与迁移完成记录：
+
+- 试点：`docs/superpowers/specs/2026-07-06-agent-platform-invoke-design.md`
+- 其余 15 个 call_type：`docs/superpowers/specs/2026-07-06-agent-platform-migrate-remaining-design.md`
+- 平台注册：`docs/superpowers/specs/2026-07-05-tender-agents-platform-provision-design.md`
+
+### 7.1 接口
 
 ```python
-class AgentRegistry(Protocol):
-    def invoke(self, call_type: str, input: BaseModel) -> BaseModel: ...
+from agent_platform import AgentClient, create_agent_client_from_env
 
-# 示例
-registry.invoke("interpret_segment", InterpretSegmentInput(...))
-# → InterpretationLLMResponse
+client = create_agent_client_from_env()  # AGENT_INVOKE_MODE=local|platform
+result = client.invoke("interpret_segment", {
+    "segment_id": "...",
+    "section_path": [...],
+    "markdown": "...",
+})
+# result.structured_output | result.text_output
 ```
 
-每个 agent 实现：
+| 组件 | 职责 |
+|------|------|
+| `AgentClient` | `invoke(call_type, input: dict) -> AgentInvokeResult` |
+| `LocalBackend` | 按 call_type 分发 `handlers/*`；OCR 走 `ocr_client` |
+| `PlatformBackend` | HTTP `POST {base}/v1/apps/invoke`，`appName` = call_type |
+| `create_agent_client_from_env` | 读 `AGENT_INVOKE_MODE` / `AGENT_PLATFORM_BASE_URL` |
 
-1. `build_messages(input) -> list[dict]`
-2. `parse_output(raw: str) -> OutputModel`
-3. `metadata`：call_type, model, response_format, max_retries, timeout
+业务层：组装 input dict、`invoke_json_model` / `extract_json_via_agent` / `invoke_text`、落盘。Handler：**不**做业务 pydantic / 跨字段 normalize。
 
-Prompt 从本文档或独立 `prompts/<call_type>.txt` 加载，**不**散落在业务 extractor 中。
+### 7.2 迁移批次（已完成）
 
-### 7.2 迁移顺序建议
-
-1. **基础设施**：Registry + 统一 logging（已有 `llm_calls.jsonl`）
-2. **低耦合 agent**：chunk_describe、chunk_classify、ocr_image_recognize
-3. **interpret 系列**：segment / scoring_table / overview（共用 normalize）
-4. **brief 三部曲**：segment → merge 管道
-5. **gen_catalog 三步**：initial → plan → apply
-6. **template / legal / outline_refine**
+| 批次 | call_type |
+|------|-----------|
+| 试点 | `outline_refine` |
+| A | `chunk_classify`, `chunk_describe`, `ocr_image_recognize` |
+| B | `interpret_segment`, `interpret_scoring_table`, `interpret_overview` |
+| C | `brief_single`, `brief_segment`, `brief_merge` |
+| D | `gen_catalog_initial`, `gen_catalog_node_plan`, `gen_catalog_node_apply` |
+| E | `template_plan`, `template_extract`, `legal_section_review` |
 
 ### 7.3 测试策略
 
-- 每个 agent 保留 `FakeLLMClient` 队列响应（见 `tests/helpers/`）
-- Contract test：input schema → messages 快照 → output validation
-- 集成测试：workspace fixture 端到端（已有 `tests/integration/`）
+- 单元：`AgentClient(LocalBackend(FakeLLMClient(...)))` 或自定义 Fake backend
+- Handler：`tests/unit/agent_platform/`（input → `structured_output` / `text_output`）
+- 业务回归：既有 `tests/` / `tests/tender_insights/`
+- platform 可选：provision 后 `AGENT_INVOKE_MODE=platform` smoke
+
+### 7.4 平台 provision
+
+```bash
+.venv/bin/python scripts/provision_agent.py --all   # 或单个 call_type
+```
+
+配置：`scripts/agents/*.json`（`enName` = call_type，与 handler / invoke 一致）。
 
 ---
 
@@ -1102,9 +1143,14 @@ Prompt 从本文档或独立 `prompts/<call_type>.txt` 加载，**不**散落在
 
 | 类型 | 路径 |
 |------|------|
+| AgentClient / factory | `src/agent_platform/client.py`、`factory.py` |
+| Local / Platform backend | `src/agent_platform/backends/` |
+| Local handlers（16） | `src/agent_platform/handlers/{call_type}.py` |
+| invoke helpers | `src/agent_platform/structured.py` |
+| insights agent 提取 + 日志 | `src/tender_insights/common/agent_extractor.py` |
 | LLM 客户端 | `src/doc_chunk/llm/openai_client.py` |
 | LLM 协议 | `src/doc_chunk/llm/client.py` |
-| JSON 提取器 | `src/tender_insights/common/llm_extractor.py` |
+| 遗留 JSON 提取器（无调用方） | `src/tender_insights/common/llm_extractor.py` |
 | 日志 | `src/tender_insights/interpret/llm_logging.py` |
 | 配置 | `src/tender_insights/config.py` |
 | interpret prompts | `src/tender_insights/interpret/prompts.py` |
@@ -1113,8 +1159,10 @@ Prompt 从本文档或独立 `prompts/<call_type>.txt` 加载，**不**散落在
 | legal prompts | `src/tender_insights/legal/prompts.py` |
 | gen_catalog prompts | `src/tender_insights/gen_catalog/prompts.py` |
 | outline_refine prompt | `src/doc_chunk/llm/prompts/outline_refine.txt` |
-| OCR | `src/tender_insights/common/ocr/client.py` |
+| OCR 实现 | `src/tender_insights/common/ocr/client.py` |
+| 平台 agent 契约 | `scripts/agents/*.json` |
+| provision 脚本 | `scripts/provision_agent.py` |
 
 ---
 
-*本文档由代码库 2026-07-05 状态逆向整理，后续 agent 实现应以此为准，源码迁移后同步更新本文档。*
+*本文档随 2026-07-06 agent_platform 全量迁移同步更新。spec/prompt 变更时以 `scripts/agents/*.json` 与 handlers 为准，并回写本节。*
