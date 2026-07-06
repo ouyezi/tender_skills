@@ -426,6 +426,8 @@ def enrich_chunks(
                 raise
             client = None
 
+    agent_client = create_agent_client_from_env(llm_client=client) if client is not None else None
+
     for entry in index.chunks:
         chunk_path = ws.chunks_dir / entry.path
         chunk_data = json.loads(chunk_path.read_text(encoding="utf-8"))
@@ -433,14 +435,18 @@ def enrich_chunks(
         classification = classify_chunk(
             title=chunk.title,
             markdown=chunk.markdown,
-            llm_client=client,
+            agent_client=agent_client,
             classification_config=classification_config,
         )
         for key, value in classification.items():
             setattr(chunk.metadata, key, value)
 
         if enable_llm_description:
-            description = describe_chunk(title=chunk.title, markdown=chunk.markdown, llm_client=client)
+            description = describe_chunk(
+                title=chunk.title,
+                markdown=chunk.markdown,
+                agent_client=agent_client,
+            )
             if description:
                 chunk.metadata.description = description
         chunk.metadata.generated_at = datetime.now(UTC).isoformat()

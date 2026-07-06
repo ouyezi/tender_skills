@@ -1,7 +1,7 @@
 # Agent Platform 剩余 15 个 call_type 迁移设计
 
 > 日期：2026-07-06  
-> 状态：Draft  
+> 状态：Accepted（Batch A 已落地）  
 > 前置：`docs/superpowers/specs/2026-07-06-agent-platform-invoke-design.md`（试点 `outline_refine` 已完成）  
 > 范围：将其余 15 个大模型/OCR 调用迁到 `AgentClient.invoke(call_type, input)`。
 

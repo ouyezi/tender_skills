@@ -44,7 +44,7 @@ def test_enrich_inserts_ocr_block(tmp_path: Path) -> None:
     ws.content_path.write_text(content, encoding="utf-8")
 
     mock_client = MagicMock()
-    mock_client.recognize_image_bytes.return_value = "表格文字"
+    mock_client.recognize_image_url.return_value = "表格文字"
 
     config = InsightsConfig(ocr_enabled=True, ocr_model="qwen-vl-ocr")
     enriched, cache, calls = enrich_content_with_ocr(
@@ -78,5 +78,5 @@ def test_enrich_skips_logo(tmp_path: Path) -> None:
     enriched, _, calls = enrich_content_with_ocr(ws, content, config=config, client=mock_client)
 
     assert calls == 0
-    mock_client.recognize_image_bytes.assert_not_called()
+    mock_client.recognize_image_url.assert_not_called()
     assert "<!-- ocr:" not in enriched

@@ -44,3 +44,60 @@ def test_local_backend_unknown_call_type_raises():
 
         assert isinstance(exc, AgentInvokeError)
         assert "unknown_agent" in str(exc)
+
+
+def test_local_backend_chunk_classify_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=[
+            '{"knowledge_type":"scheme","chapter_type":"技术方案",'
+            '"confidence":0.9,"rationale":"ok"}'
+        ]
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "chunk_classify",
+        {"title": "技术方案", "markdown": "云原生架构"},
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["knowledge_type"] == "scheme"
+
+
+def test_local_backend_chunk_describe_returns_text_output():
+    llm = FakeLLMClient(responses=["这是一段摘要。"])
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "chunk_describe",
+        {"title": "概述", "markdown": "建设招标处理系统"},
+    )
+    assert result.status == "completed"
+    assert result.text_output == "这是一段摘要。"
+    assert result.structured_output is None
+
+
+def test_local_backend_ocr_requires_ocr_client():
+    from agent_platform.models import AgentInvokeError
+
+    backend = LocalBackend(llm_client=FakeLLMClient())
+    try:
+        backend.invoke("ocr_image_recognize", {"image_url": "data:image/png;base64,xx"})
+        assert False, "expected AgentInvokeError"
+    except AgentInvokeError as exc:
+        assert "ocr_client" in str(exc)
+
+
+def test_local_backend_ocr_image_recognize_returns_text():
+    class _FakeOcr:
+        def recognize_image_url(self, image_url: str) -> str:
+            assert image_url.startswith("data:")
+            return "OCR 文本"
+
+    client = AgentClient(
+        LocalBackend(llm_client=FakeLLMClient(), ocr_client=_FakeOcr()),
+    )
+    result = client.invoke(
+        "ocr_image_recognize",
+        {"image_url": "data:image/png;base64,abc"},
+    )
+    assert result.status == "completed"
+    assert result.text_output == "OCR 文本"
