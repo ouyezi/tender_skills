@@ -9,6 +9,9 @@ from agent_platform.handlers.brief_segment import invoke_brief_segment
 from agent_platform.handlers.brief_single import invoke_brief_single
 from agent_platform.handlers.chunk_classify import invoke_chunk_classify
 from agent_platform.handlers.chunk_describe import invoke_chunk_describe
+from agent_platform.handlers.gen_catalog_initial import invoke_gen_catalog_initial
+from agent_platform.handlers.gen_catalog_node_apply import invoke_gen_catalog_node_apply
+from agent_platform.handlers.gen_catalog_node_plan import invoke_gen_catalog_node_plan
 from agent_platform.handlers.interpret_overview import invoke_interpret_overview
 from agent_platform.handlers.interpret_scoring_table import invoke_interpret_scoring_table
 from agent_platform.handlers.interpret_segment import invoke_interpret_segment
@@ -37,6 +40,9 @@ _HANDLERS: dict[str, Handler] = {
     "brief_single": invoke_brief_single,
     "brief_segment": invoke_brief_segment,
     "brief_merge": invoke_brief_merge,
+    "gen_catalog_initial": invoke_gen_catalog_initial,
+    "gen_catalog_node_plan": invoke_gen_catalog_node_plan,
+    "gen_catalog_node_apply": invoke_gen_catalog_node_apply,
 }
 
 

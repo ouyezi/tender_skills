@@ -1,7 +1,7 @@
 # Agent Platform 剩余 15 个 call_type 迁移设计
 
 > 日期：2026-07-06  
-> 状态：Accepted（Batch A / B / C 已落地）  
+> 状态：Accepted（Batch A / B / C / D 已落地）  
 > 前置：`docs/superpowers/specs/2026-07-06-agent-platform-invoke-design.md`（试点 `outline_refine` 已完成）  
 > 范围：将其余 15 个大模型/OCR 调用迁到 `AgentClient.invoke(call_type, input)`。
 
@@ -247,7 +247,7 @@ API / CLI 入口：凡构造 `LLMClient` 的地方改为 `create_agent_client_fr
 | A | `chunk_classify`, `chunk_describe`, `ocr_image_recognize` | doc_chunk + ocr（已完成） |
 | B | `interpret_segment`, `interpret_scoring_table`, `interpret_overview` | tender_insights.interpret（已完成） |
 | C | `brief_single`, `brief_segment`, `brief_merge` | tender_insights.brief（已完成） |
-| D | `gen_catalog_initial`, `gen_catalog_node_plan`, `gen_catalog_node_apply` | tender_insights.gen_catalog |
+| D | `gen_catalog_initial`, `gen_catalog_node_plan`, `gen_catalog_node_apply` | tender_insights.gen_catalog（已完成） |
 | E | `template_plan`, `template_extract`, `legal_section_review` | template + legal |
 
 每批完成定义：
@@ -291,6 +291,7 @@ API / CLI 入口：凡构造 `LLMClient` 的地方改为 `create_agent_client_fr
 - [x] Batch A：`chunk_classify` / `chunk_describe` / `ocr_image_recognize` local handler + 业务接线完成。
 - [x] Batch B：`interpret_segment` / `interpret_scoring_table` / `interpret_overview` local handler + 业务接线完成。
 - [x] Batch C：`brief_single` / `brief_segment` / `brief_merge` local handler + 业务接线完成。
+- [x] Batch D：`gen_catalog_initial` / `gen_catalog_node_plan` / `gen_catalog_node_apply` local handler + 业务接线完成。
 - [ ] `grep` 业务包内无面向这 15 类的裸 `llm_client.complete` / `extract_json_model` / `recognize_image_bytes`（测试 helper 除外）。
 - [ ] `AGENT_INVOKE_MODE=local` 默认全量单元/集成绿。
 - [x] `invoke_json_model` 重试不注入 validation feedback（helper 已实现）。

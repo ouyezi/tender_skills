@@ -107,6 +107,37 @@ def test_local_backend_interpret_segment_returns_structured_output():
     assert result.structured_output["disqualification_items"] == []
 
 
+def test_local_backend_gen_catalog_initial_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=[
+            '{"outline":{"id":"bid-root","title":"投标文件","level":0,"order":0,'
+            '"children":[]},"changes_summary":"ok"}'
+        ]
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "gen_catalog_initial",
+        {"context_json": "## 解读概要\n{}"},
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["outline"]["id"] == "bid-root"
+
+
+def test_local_backend_gen_catalog_node_plan_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=['{"needs_optimization":false,"refinement_plan":"无需调整"}']
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "gen_catalog_node_plan",
+        {"context_json": "## 当前完整目录树\n{}\n\n## 任务：目录优化评估"},
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["needs_optimization"] is False
+
+
 def test_local_backend_brief_single_returns_structured_output():
     llm = FakeLLMClient(
         responses=[
