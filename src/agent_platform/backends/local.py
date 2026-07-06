@@ -6,6 +6,9 @@ from doc_chunk.llm.client import LLMClient
 
 from agent_platform.handlers.chunk_classify import invoke_chunk_classify
 from agent_platform.handlers.chunk_describe import invoke_chunk_describe
+from agent_platform.handlers.interpret_overview import invoke_interpret_overview
+from agent_platform.handlers.interpret_scoring_table import invoke_interpret_scoring_table
+from agent_platform.handlers.interpret_segment import invoke_interpret_segment
 from agent_platform.handlers.ocr_image_recognize import invoke_ocr_image_recognize
 from agent_platform.handlers.outline_refine import invoke_outline_refine
 from agent_platform.models import AgentInvokeError, AgentInvokeResult
@@ -25,6 +28,9 @@ _HANDLERS: dict[str, Handler] = {
     "outline_refine": invoke_outline_refine,
     "chunk_classify": invoke_chunk_classify,
     "chunk_describe": invoke_chunk_describe,
+    "interpret_segment": invoke_interpret_segment,
+    "interpret_scoring_table": invoke_interpret_scoring_table,
+    "interpret_overview": invoke_interpret_overview,
 }
 
 

@@ -86,6 +86,44 @@ def test_local_backend_ocr_requires_ocr_client():
         assert "ocr_client" in str(exc)
 
 
+def test_local_backend_interpret_segment_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=[
+            '{"disqualification_items":[],"scoring_items":[],'
+            '"bid_risk_items":[],"directory_requirements":[]}'
+        ]
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "interpret_segment",
+        {
+            "segment_id": "seg-001",
+            "section_path": "第一章 > 须知",
+            "markdown": "投标人须提交营业执照。",
+        },
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["disqualification_items"] == []
+
+
+def test_local_backend_interpret_overview_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=[
+            '{"summary":"s","disqualification_summary":"d","scoring_summary":"sc",'
+            '"bid_risk_summary":"b","directory_summary":"dir"}'
+        ]
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "interpret_overview",
+        {"items_json": '{"disqualification_items":[]}'},
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["summary"] == "s"
+
+
 def test_local_backend_ocr_image_recognize_returns_text():
     class _FakeOcr:
         def recognize_image_url(self, image_url: str) -> str:
