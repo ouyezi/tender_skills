@@ -1,3 +1,1 @@
-from tender_insights.brief.extractor import extract_brief_workspace
-
-__all__ = ["extract_brief_workspace"]
+"""招标基础概要（brief）模块。"""

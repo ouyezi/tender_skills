@@ -31,7 +31,7 @@ def test_interpret_llm_calls_endpoint(viewer_data_dir) -> None:
     workspace = settings.workspaces_dir / "llm-1"
     workspace.mkdir(parents=True)
     (workspace / "llm_calls.jsonl").write_text(
-        '{"call_type":"segment","segment_id":"s1","messages":[{"role":"user","content":"hi"}]}\n'
+        '{"call_type":"interpret_segment","segment_id":"s1","messages":[{"role":"user","content":"hi"}]}\n'
         '{"event":"attempt","segment_id":"s1","attempt":0,"success":false,"response_raw":"bad"}\n'
         '{"event":"response","segment_id":"s1","response":"{}"}\n',
         encoding="utf-8",

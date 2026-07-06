@@ -6,10 +6,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Literal
 
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.workspace.layout import OutputWorkspace
 
-from tender_insights.common.llm_extractor import extract_json_model
+from tender_insights.common.agent_extractor import extract_json_via_agent
 from tender_insights.config import InsightsConfig
 from tender_insights.gen_catalog.context import (
     build_initial_user_prompt,
@@ -43,7 +45,20 @@ from tender_insights.interpret.llm_logging import LLM_CALLS_FILENAME, log_llm_pr
 
 
 def ensure_gen_catalog_llm_logging(workspace: OutputWorkspace) -> None:
+    """将 interpret 日志路径指向工作区 llm_calls.jsonl。"""
     os.environ["INTERPRET_LOG_JSONL"] = str(workspace.root / LLM_CALLS_FILENAME)
+
+
+def _resolve_agent_client(
+    client: LLMClient | AgentClient,
+    agent_client: AgentClient | None = None,
+) -> AgentClient:
+    """解析可用于 invoke 的 AgentClient。"""
+    if agent_client is not None:
+        return agent_client
+    if isinstance(client, AgentClient):
+        return client
+    return create_agent_client_from_env(llm_client=client)
 
 
 def _draft_path(workspace: OutputWorkspace):
@@ -99,13 +114,16 @@ def _build_draft_shell(
 
 def run_gen_catalog_initial(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     report: PrerequisiteReport,
     mode: Literal["step", "auto"] = "step",
     config: InsightsConfig | None = None,
+    agent_client: AgentClient | None = None,
 ) -> BidOutlineFile:
+    """调用 gen_catalog_initial 生成初始目录树并落盘 draft/session。"""
     config = config or InsightsConfig.from_env()
+    resolved = _resolve_agent_client(client, agent_client)
     user_content = build_initial_user_prompt(report)
     messages = [
         {"role": "system", "content": GEN_CATALOG_INITIAL_SYSTEM},
@@ -117,9 +135,10 @@ def run_gen_catalog_initial(
         workspace=str(workspace.root),
         segment_id="initial",
     )
-    response = extract_json_model(
-        client,
-        messages,
+    response = extract_json_via_agent(
+        resolved,
+        "gen_catalog_initial",
+        {"context_json": user_content},
         BidOutlineLLMResponse,
         max_retries=config.max_retries,
         log_context={"call_type": "gen_catalog_initial", "segment_id": "initial"},
@@ -147,13 +166,9 @@ def run_gen_catalog_initial(
     return draft
 
 
-    save_session(workspace, session)
-    return draft
-
-
 def run_gen_catalog_node_plan(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     report: PrerequisiteReport,
     draft: BidOutlineFile,
@@ -161,8 +176,11 @@ def run_gen_catalog_node_plan(
     excerpt: str,
     title: str,
     config: InsightsConfig | None = None,
+    agent_client: AgentClient | None = None,
 ) -> BidOutlinePlanLLMResponse:
+    """调用 gen_catalog_node_plan 评估节点是否需要优化。"""
     config = config or InsightsConfig.from_env()
+    resolved = _resolve_agent_client(client, agent_client)
     user_content = build_node_plan_user_prompt(report.brief, draft.root, excerpt)
     messages = [
         {"role": "system", "content": GEN_CATALOG_NODE_SYSTEM},
@@ -175,9 +193,10 @@ def run_gen_catalog_node_plan(
         segment_id=node_id,
         section_path=[title],
     )
-    return extract_json_model(
-        client,
-        messages,
+    return extract_json_via_agent(
+        resolved,
+        "gen_catalog_node_plan",
+        {"context_json": user_content},
         BidOutlinePlanLLMResponse,
         max_retries=config.max_retries,
         log_context={"call_type": "gen_catalog_node_plan", "segment_id": node_id},
@@ -186,7 +205,7 @@ def run_gen_catalog_node_plan(
 
 def run_gen_catalog_node_apply(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     report: PrerequisiteReport,
     draft: BidOutlineFile,
@@ -195,8 +214,11 @@ def run_gen_catalog_node_apply(
     title: str,
     refinement_plan: str,
     config: InsightsConfig | None = None,
+    agent_client: AgentClient | None = None,
 ) -> BidOutlineLLMResponse:
+    """调用 gen_catalog_node_apply 按方案更新完整目录树。"""
     config = config or InsightsConfig.from_env()
+    resolved = _resolve_agent_client(client, agent_client)
     user_content = build_node_apply_user_prompt(
         report.brief, draft.root, excerpt, refinement_plan
     )
@@ -211,9 +233,10 @@ def run_gen_catalog_node_apply(
         segment_id=node_id,
         section_path=[title],
     )
-    response = extract_json_model(
-        client,
-        messages,
+    response = extract_json_via_agent(
+        resolved,
+        "gen_catalog_node_apply",
+        {"context_json": user_content},
         BidOutlineLLMResponse,
         max_retries=config.max_retries,
         log_context={"call_type": "gen_catalog_node_apply", "segment_id": node_id},
@@ -224,15 +247,18 @@ def run_gen_catalog_node_apply(
 
 def run_gen_catalog_node(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     report: PrerequisiteReport,
     draft: BidOutlineFile,
     session: GenCatalogSession,
     node_id: str,
     config: InsightsConfig | None = None,
+    agent_client: AgentClient | None = None,
 ) -> BidOutlineFile:
+    """对单个节点执行 plan，必要时 apply 并更新 draft/session。"""
     config = config or InsightsConfig.from_env()
+    resolved = _resolve_agent_client(client, agent_client)
     node = find_node(draft.root, node_id)
     title = node.title if node is not None else node_id
     excerpt = pick_node_excerpt(
@@ -244,13 +270,14 @@ def run_gen_catalog_node(
 
     plan = run_gen_catalog_node_plan(
         workspace,
-        client,
+        resolved,
         report=report,
         draft=draft,
         node_id=node_id,
         excerpt=excerpt,
         title=title,
         config=config,
+        agent_client=resolved,
     )
     session.last_plan = {
         "node_id": node_id,
@@ -263,7 +290,7 @@ def run_gen_catalog_node(
     if plan.needs_optimization:
         response = run_gen_catalog_node_apply(
             workspace,
-            client,
+            resolved,
             report=report,
             draft=draft,
             node_id=node_id,
@@ -271,6 +298,7 @@ def run_gen_catalog_node(
             title=title,
             refinement_plan=plan.refinement_plan,
             config=config,
+            agent_client=resolved,
         )
         draft = _build_draft_shell(
             report,
@@ -317,7 +345,7 @@ def _emit_progress(
 
 def gen_catalog_workspace(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     mode: Literal["step", "auto"] = "auto",
     continue_from_session: bool = False,
@@ -326,12 +354,15 @@ def gen_catalog_workspace(
     run_limit: int | None = None,
     on_progress: Callable[[str, dict], None] | None = None,
     config: InsightsConfig | None = None,
+    agent_client: AgentClient | None = None,
 ) -> BidOutlineFile:
+    """生成/推进投标目录（支持 step / auto）。"""
     if restart:
         clear_gen_catalog_artifacts(workspace)
 
     report = validate_prerequisites(workspace, overwrite=overwrite)
     ensure_gen_catalog_llm_logging(workspace)
+    resolved = _resolve_agent_client(client, agent_client)
 
     draft = load_draft(workspace)
     session: GenCatalogSession | None = None
@@ -352,7 +383,14 @@ def gen_catalog_workspace(
             total=1,
             step="gen_catalog_initial",
         )
-        draft = run_gen_catalog_initial(workspace, client, report=report, mode=mode, config=config)
+        draft = run_gen_catalog_initial(
+            workspace,
+            resolved,
+            report=report,
+            mode=mode,
+            config=config,
+            agent_client=resolved,
+        )
         session = load_session(workspace)
         steps_run += 1
         if mode == "step" and (run_limit is None or steps_run >= run_limit):
@@ -392,12 +430,13 @@ def gen_catalog_workspace(
         )
         draft = run_gen_catalog_node(
             workspace,
-            client,
+            resolved,
             report=report,
             draft=draft,
             session=session,
             node_id=pending,
             config=config,
+            agent_client=resolved,
         )
         session = load_session(workspace)
         steps_run += 1

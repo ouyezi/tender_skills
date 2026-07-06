@@ -1,0 +1,140 @@
+{
+  "callType": "outline_refine",
+  "zhName": "目录树优化",
+  "enName": "outline_refine",
+  "description": "根据用户指令优化文档目录树",
+  "modelName": "qwen3.7-max",
+  "promptFile": "src/doc_chunk/llm/prompts/outline_refine.txt",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      {
+        "id": "field_instruction",
+        "name": "instruction",
+        "type": "string",
+        "required": true,
+        "description": "优化指令"
+      },
+      {
+        "id": "field_original_outline",
+        "name": "original_outline",
+        "type": "object",
+        "required": true,
+        "children": [
+          { "id": "field_schema_version", "name": "schema_version", "type": "string", "required": true },
+          { "id": "field_nodes", "name": "nodes", "type": "array", "required": true, "itemType": "object", "children": [
+            { "id": "field_node_id", "name": "node_id", "type": "string", "required": true },
+            { "id": "field_node_title", "name": "title", "type": "string", "required": true },
+            { "id": "field_node_level", "name": "level", "type": "number", "required": true }
+          ] }
+        ]
+      },
+      {
+        "id": "field_current_outline",
+        "name": "current_outline",
+        "type": "object",
+        "required": true,
+        "children": [
+          { "id": "field_schema_version2", "name": "schema_version", "type": "string", "required": true },
+          { "id": "field_nodes2", "name": "nodes", "type": "array", "required": true, "itemType": "object", "children": [
+            { "id": "field_node_id2", "name": "node_id", "type": "string", "required": true },
+            { "id": "field_node_title2", "name": "title", "type": "string", "required": true },
+            { "id": "field_node_level2", "name": "level", "type": "number", "required": true }
+          ] }
+        ]
+      }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      {
+        "id": "field_outline_refined",
+        "name": "outline_refined",
+        "type": "object",
+        "required": true,
+        "children": [
+          { "id": "field_or_schema_version", "name": "schema_version", "type": "string", "required": true },
+          { "id": "field_or_nodes", "name": "nodes", "type": "array", "required": true, "itemType": "object", "children": [
+            { "id": "field_or_node_id", "name": "node_id", "type": "string", "required": true },
+            { "id": "field_or_node_title", "name": "title", "type": "string", "required": true },
+            { "id": "field_or_node_level", "name": "level", "type": "number", "required": true }
+          ] }
+        ]
+      },
+      {
+        "id": "field_node_mappings",
+        "name": "node_mappings",
+        "type": "array",
+        "required": true,
+        "itemType": "object",
+        "children": [
+          { "id": "field_nm_refined_node_id", "name": "refined_node_id", "type": "string", "required": true },
+          { "id": "field_nm_source_node_ids", "name": "source_node_ids", "type": "array", "required": true, "itemType": "string" },
+          { "id": "field_nm_markdown_range", "name": "markdown_range", "type": "object", "required": true, "children": [
+            { "id": "field_nm_char_start", "name": "char_start", "type": "number", "required": true },
+            { "id": "field_nm_char_end", "name": "char_end", "type": "number", "required": true }
+          ] },
+          { "id": "field_nm_operation", "name": "operation", "type": "string", "required": true }
+        ]
+      },
+      {
+        "id": "field_change_summary",
+        "name": "change_summary",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "initialMessages": [],
+    "runtime": {
+      "retryCount": 0,
+      "timeoutMs": 60000,
+      "streaming": false,
+      "multiTurn": false
+    }
+  },
+  "application": {
+    "mode": "api",
+    "syncType": "sync",
+    "timeoutMs": 60000
+  },
+  "verify": {
+    "input": {
+      "instruction": "重命名第一章为「项目概述」",
+      "original_outline": {
+        "schema_version": "1.0",
+        "strategy": "heading_heuristic",
+        "nodes": [
+          {
+            "node_id": "n1",
+            "title": "第一章",
+            "level": 1,
+            "parent_id": null,
+            "sort_order": 0,
+            "anchor": { "block_index": 0 },
+            "needs_review": false,
+            "source_refs": []
+          }
+        ]
+      },
+      "current_outline": {
+        "schema_version": "1.0",
+        "strategy": "heading_heuristic",
+        "nodes": [
+          {
+            "node_id": "n1",
+            "title": "第一章",
+            "level": 1,
+            "parent_id": null,
+            "sort_order": 0,
+            "anchor": { "block_index": 0 },
+            "needs_review": false,
+            "source_refs": []
+          }
+        ]
+      }
+    },
+    "pydanticModels": {
+      "outline_refined": "doc_chunk.models.outline:OutlineTree",
+      "node_mappings": "doc_chunk.models.outline:OutlineMappingFile"
+    }
+  }
+}

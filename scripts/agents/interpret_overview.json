@@ -1,0 +1,40 @@
+{
+  "callType": "interpret_overview",
+  "zhName": "解读概要合成",
+  "enName": "interpret_overview",
+  "description": "根据已提取明细生成五段概要描述",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标文件解读专家。根据已提取的结构化明细，生成概要描述。\n只输出 JSON：{ summary, disqualification_summary, scoring_summary, bid_risk_summary, directory_summary }\n要求：\n- scoring_summary 须写清总分结构、各大类要点及关键评分细则\n- directory_summary 须区分明确目录与推断目录",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_items_json", "name": "items_json", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_summary", "name": "summary", "type": "string", "required": true },
+      { "id": "f_dq_sum", "name": "disqualification_summary", "type": "string", "required": true },
+      { "id": "f_sc_sum", "name": "scoring_summary", "type": "string", "required": true },
+      { "id": "f_br_sum", "name": "bid_risk_summary", "type": "string", "required": true },
+      { "id": "f_dr_sum", "name": "directory_summary", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "已提取明细:\n{{items_json}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "items_json": "{\"disqualification_items\":[{\"id\":\"dq1\",\"title\":\"缺少营业执照\",\"summary\":\"须提交营业执照\"}],\"scoring_items\":[{\"id\":\"sc1\",\"title\":\"技术方案\",\"summary\":\"满分30分\",\"max_score\":30}],\"bid_risk_items\":[],\"directory_requirements\":[]}"
+    },
+    "pydanticModels": {
+      "__root__": "tender_insights.interpret.overview:OverviewLLMResponse"
+    }
+  }
+}

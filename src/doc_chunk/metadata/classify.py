@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
+from agent_platform.models import AgentInvokeError
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.metadata.rules import load_classification_rules, match_hint_aliases, suggest_candidate_types
 
@@ -62,22 +64,36 @@ def _match_rule(text: str, rules: dict[str, Any]) -> tuple[str, str, float, str]
     return best
 
 
-def _llm_classify(text: str, llm_client: LLMClient | None) -> tuple[str, str, float, str] | None:
+def _resolve_agent_client(
+    *,
+    agent_client: AgentClient | None,
+    llm_client: LLMClient | None,
+) -> AgentClient | None:
+    """解析可用于 invoke 的 AgentClient（兼容旧 llm_client 入参）。"""
+    if agent_client is not None:
+        return agent_client
     if llm_client is None:
         return None
-    prompt = (
-        "请将以下文本分类为 scheme/product/qualification/other 或自定义标签。"
-        "返回JSON：knowledge_type, chapter_type, confidence, rationale。\n"
-        f"{text[:3000]}"
-    )
-    raw = llm_client.complete(
-        [{"role": "user", "content": prompt}],
-        response_format="json",
-        timeout=60.0,
-    )
+    return create_agent_client_from_env(llm_client=llm_client)
+
+
+def _llm_classify(
+    title: str,
+    markdown: str,
+    agent_client: AgentClient | None,
+) -> tuple[str, str, float, str] | None:
+    """通过 chunk_classify agent 做 LLM 分类。"""
+    if agent_client is None:
+        return None
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
+        result = agent_client.invoke(
+            "chunk_classify",
+            {"title": title, "markdown": markdown},
+        )
+    except AgentInvokeError:
+        return None
+    payload = result.structured_output
+    if not isinstance(payload, dict):
         return None
     label = str(payload.get("knowledge_type", "other")).strip() or "other"
     chapter_type = str(payload.get("chapter_type", label)).strip() or label
@@ -91,6 +107,7 @@ def classify_chunk(
     title: str,
     markdown: str,
     llm_client: LLMClient | None = None,
+    agent_client: AgentClient | None = None,
     classification_config: Any = None,
 ) -> dict[str, Any]:
     rules = load_classification_rules(classification_config)
@@ -115,7 +132,8 @@ def classify_chunk(
             result["chapter_taxonomy_hints"] = taxonomy_hints
         return _attach_candidate_suggestions(_apply_direct_candidate_mapping(result), classification_config)
 
-    llm_result = _llm_classify(text, llm_client)
+    resolved_client = _resolve_agent_client(agent_client=agent_client, llm_client=llm_client)
+    llm_result = _llm_classify(title, markdown, resolved_client)
     if llm_result is not None:
         label, chapter_type, confidence, rationale = llm_result
         result = {

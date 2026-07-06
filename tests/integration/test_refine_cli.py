@@ -65,7 +65,7 @@ def test_refine_accept_discard_reset_cli(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(
-        "doc_chunk.api.create_llm_client_from_env",
+        "doc_chunk.llm.openai_client.create_llm_client_from_env",
         lambda: __import__("doc_chunk.llm.client", fromlist=["FakeLLMClient"]).FakeLLMClient(
             responses=[
                 (

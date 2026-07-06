@@ -1,0 +1,52 @@
+{
+  "callType": "interpret_scoring_table",
+  "zhName": "评分表专项解读",
+  "enName": "interpret_scoring_table",
+  "description": "专用于评分表分段的结构化提取",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标文件解读专家。从给定正文片段中提取结构化信息。\n只输出 JSON，字段：disqualification_items, scoring_items, bid_risk_items, directory_requirements。\n【分段提示】本段仅含评分表，须完整提取全部 scoring_items + children；directory_requirements 返回 []。\n若无某类内容，对应数组返回 []。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_segment_id", "name": "segment_id", "type": "string", "required": true },
+      { "id": "f_section_path", "name": "section_path", "type": "string", "required": true },
+      { "id": "f_markdown", "name": "markdown", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_dq", "name": "disqualification_items", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_dq_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_dq_title", "name": "title", "type": "string", "required": true }
+      ]},
+      { "id": "f_sc", "name": "scoring_items", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_sc_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_sc_title", "name": "title", "type": "string", "required": true }
+      ]},
+      { "id": "f_br", "name": "bid_risk_items", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_br_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_br_title", "name": "title", "type": "string", "required": true }
+      ]},
+      { "id": "f_dr", "name": "directory_requirements", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_dr_id", "name": "id", "type": "string", "required": true },
+        { "id": "f_dr_title", "name": "title", "type": "string", "required": true }
+      ]}
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "segment_id: {{segment_id}}\nsection_path: {{section_path}}\n\n正文:\n{{markdown}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+    "verify": {
+      "input": {
+        "segment_id": "seg-scoring-001",
+        "section_path": "评标办法 > 评分标准",
+        "markdown": "【表格:评分表】\n| 评审因素 | 分值 |\n| 技术方案 | 30 |\n| 商务报价 | 10 |"
+      }
+    }
+}

@@ -1,0 +1,29 @@
+{
+  "callType": "gen_catalog_node_plan",
+  "zhName": "目录节点优化评估",
+  "enName": "gen_catalog_node_plan",
+  "description": "评估目录树是否需进一步优化",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是投标目录规划专家。用户消息包含招标概要、当前目录树与招标文件摘录；具体任务见用户消息末尾「## 任务」节。\n只输出 JSON：{\"needs_optimization\": <bool>, \"refinement_plan\": \"<方案说明>\"}\n禁止输出 outline 字段。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_context", "name": "context_json", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_needs", "name": "needs_optimization", "type": "boolean", "required": true },
+      { "id": "f_plan", "name": "refinement_plan", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      { "id": "msg_user", "role": "user", "mode": "text", "content": "{{context_json}}\n\n## 任务：目录优化评估\n\n分析摘录是否要求对当前目录树进行优化。只输出 JSON。" }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "context_json": "## 当前完整目录树\n{\"id\":\"bid-root\",\"title\":\"投标文件\",\"children\":[{\"id\":\"bid-001\",\"title\":\"投标函\"}]}\n\n## 招标文件相关摘录\n要求补充「授权委托书」章节。"
+    }
+  }
+}

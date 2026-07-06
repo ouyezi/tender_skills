@@ -1,0 +1,45 @@
+{
+  "callType": "template_extract",
+  "zhName": "模板正文提取",
+  "enName": "template_extract",
+  "description": "从分片识别并提取投标提交模板",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是招标文件模版提取专家。\n模版 = 发标单位要求投标人填写、签字、盖章并按格式提交的范本/表格/函件。\n只输出 JSON：{\"templates\": [{\"title\",\"type\",\"type_label\",\"markdown\",\"confidence\",\"source_excerpt\"}]}\n若片段内无模版则返回 templates: []。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_shard_id", "name": "shard_id", "type": "string", "required": true },
+      { "id": "f_path", "name": "section_path", "type": "string", "required": true },
+      { "id": "f_strategy", "name": "strategy", "type": "string", "required": true },
+      { "id": "f_count", "name": "char_count", "type": "number", "required": true },
+      { "id": "f_markdown", "name": "markdown", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_templates", "name": "templates", "type": "array", "required": true, "itemType": "object", "children": [
+        { "id": "f_t_title", "name": "title", "type": "string", "required": true },
+        { "id": "f_t_type", "name": "type", "type": "string", "required": true },
+        { "id": "f_t_markdown", "name": "markdown", "type": "string", "required": true }
+      ]}
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "模版正文分片编号: {{shard_id}}\n章节路径: {{section_path}}\n分片策略: {{strategy}}\n本分片约 {{char_count}} 字。\n请识别本片段内所有投标提交模版。\n\n正文:\n{{markdown}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 120000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 120000 },
+  "verify": {
+    "input": {
+      "shard_id": "s1",
+      "section_path": "投标文件格式",
+      "strategy": "section",
+      "char_count": 200,
+      "markdown": "## 投标函\n\n致：________（招标人）\n\n我方愿意以人民币______元参与投标。\n\n投标人（盖章）：________"
+    }
+  }
+}

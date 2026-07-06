@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
 
+from tender_insights.common.agent_extractor import extract_json_via_agent
 from tender_insights.common.anchor_backfill import backfill_char_range
 from tender_insights.common.content_source import prepare_interpret_source
-from tender_insights.common.llm_extractor import extract_json_model
 from tender_insights.common.output_writer import write_json_artifact
 from tender_insights.common.segment_planner import plan_segments
 from tender_insights.config import InsightsConfig
@@ -22,23 +24,46 @@ from tender_insights.interpret.merger import (
 from tender_insights.interpret.models import InterpretationFile, InterpretationLLMResponse
 from tender_insights.interpret.overview import build_overview
 from tender_insights.interpret.prompts import SYSTEM_PROMPT, build_segment_prompt
+from tender_insights.interpret.response_normalize import normalize_interpretation_llm_data
 
 
 def _apply_anchors(items: list, content_md: str) -> None:
+    """为提取项回填原文锚点。"""
     for item in items:
         start, end = backfill_char_range(content_md, item.source_excerpt)
         item.char_start = start
         item.char_end = end
 
 
+def _section_path_string(section_path: list[str]) -> str:
+    """将章节路径列表格式化为 agent 合同中的字符串。"""
+    return " > ".join(section_path) if section_path else "(root)"
+
+
+def _segment_call_type(segment_id: str) -> str:
+    """按分段 id 选择 interpret call_type。"""
+    if segment_id.startswith("seg-scoring-"):
+        return "interpret_scoring_table"
+    return "interpret_segment"
+
+
 def interpret_workspace(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     config: InsightsConfig | None = None,
     on_progress: Callable[[str, dict], None] | None = None,
+    agent_client: AgentClient | None = None,
 ) -> InterpretationFile:
+    """对工作区执行分段解读并写入 interpretation.json。"""
     config = config or InsightsConfig.from_env()
+    resolved = agent_client
+    if resolved is None:
+        if isinstance(client, AgentClient):
+            resolved = client
+        else:
+            resolved = create_agent_client_from_env(llm_client=client)
+
     outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
 
     source = prepare_interpret_source(workspace, config=config)
@@ -69,16 +94,32 @@ def interpret_workspace(
                     "node_id": seg.segment_id,
                 },
             )
+        call_type = _segment_call_type(seg.segment_id)
+        section_path_str = _section_path_string(seg.section_path)
+        agent_input: dict = {
+            "segment_id": seg.segment_id,
+            "section_path": section_path_str,
+            "markdown": seg.markdown,
+        }
+        if call_type == "interpret_segment" and config.segment_keyword_match_enabled:
+            agent_input["keyword_match_enabled"] = True
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_segment_prompt(
-                seg.segment_id,
-                seg.section_path,
-                seg.markdown,
-                keyword_match_enabled=config.segment_keyword_match_enabled,
-            )},
+            {
+                "role": "user",
+                "content": build_segment_prompt(
+                    seg.segment_id,
+                    seg.section_path,
+                    seg.markdown,
+                    keyword_match_enabled=(
+                        True
+                        if call_type == "interpret_scoring_table"
+                        else config.segment_keyword_match_enabled
+                    ),
+                ),
+            },
         ]
-        call_type = "scoring_table" if seg.segment_id.startswith("seg-scoring-") else "segment"
         log_llm_prompt(
             call_type=call_type,
             messages=messages,
@@ -87,12 +128,16 @@ def interpret_workspace(
             section_path=seg.section_path,
             token_estimate=seg.token_estimate,
         )
-        batch = extract_json_model(
-            client,
-            messages,
+        batch = extract_json_via_agent(
+            resolved,
+            call_type,
+            agent_input,
             InterpretationLLMResponse,
             max_retries=config.max_retries,
-            normalize_context={"section_path": seg.section_path},
+            normalize=lambda data, path=seg.section_path: normalize_interpretation_llm_data(
+                data,
+                section_path=path,
+            ),
             log_context={"call_type": call_type, "segment_id": seg.segment_id},
         )
         aggregated.disqualification_items.extend(batch.disqualification_items)
@@ -122,13 +167,14 @@ def interpret_workspace(
             },
         )
     overview = build_overview(
-        client,
+        resolved,
         dq=dq,
         sc=sc,
         br=br,
         dr=dr,
         max_retries=config.max_retries,
         workspace=str(workspace.root),
+        agent_client=resolved,
     )
     directory_outline = build_directory_outline(dr)
 

@@ -1,21 +1,31 @@
 from __future__ import annotations
 
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
+from agent_platform.models import AgentInvokeError
 from doc_chunk.llm.client import LLMClient
 
 
-def describe_chunk(*, title: str, markdown: str, llm_client: LLMClient | None) -> str | None:
-    if llm_client is None:
+def describe_chunk(
+    *,
+    title: str,
+    markdown: str,
+    llm_client: LLMClient | None = None,
+    agent_client: AgentClient | None = None,
+) -> str | None:
+    """通过 chunk_describe agent 生成分块摘要。"""
+    client = agent_client
+    if client is None and llm_client is not None:
+        client = create_agent_client_from_env(llm_client=llm_client)
+    if client is None:
         return None
 
-    prompt = (
-        "请基于以下文档块生成1-3句中文摘要，突出核心信息，避免臆测。\n"
-        f"标题: {title}\n"
-        "正文:\n"
-        f"{markdown[:4000]}"
-    )
-    text = llm_client.complete(
-        [{"role": "user", "content": prompt}],
-        response_format="text",
-        timeout=60.0,
-    ).strip()
+    try:
+        result = client.invoke(
+            "chunk_describe",
+            {"title": title, "markdown": markdown},
+        )
+    except AgentInvokeError:
+        return None
+    text = (result.text_output or "").strip()
     return text or None

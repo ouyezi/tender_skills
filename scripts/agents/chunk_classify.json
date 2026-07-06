@@ -1,0 +1,38 @@
+{
+  "callType": "chunk_classify",
+  "zhName": "分块知识分类",
+  "enName": "chunk_classify",
+  "description": "对文档块进行知识类型分类",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是文档分块分类助手。根据用户提供的标题与正文，输出 JSON：knowledge_type, chapter_type, confidence, rationale。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_title", "name": "title", "type": "string", "required": true },
+      { "id": "f_markdown", "name": "markdown", "type": "string", "required": true }
+    ],
+    "formatOutput": true,
+    "outputSchema": [
+      { "id": "f_knowledge_type", "name": "knowledge_type", "type": "string", "required": true },
+      { "id": "f_chapter_type", "name": "chapter_type", "type": "string", "required": true },
+      { "id": "f_confidence", "name": "confidence", "type": "number", "required": true },
+      { "id": "f_rationale", "name": "rationale", "type": "string", "required": true }
+    ],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "请将以下文本分类为 scheme/product/qualification/other 或自定义标签。\n返回JSON：knowledge_type, chapter_type, confidence, rationale。\n{{title}}\n{{markdown}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 60000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 60000 },
+  "verify": {
+    "input": {
+      "title": "技术方案",
+      "markdown": "本项目采用云原生架构，包含微服务、容器编排与弹性伸缩能力。"
+    }
+  }
+}

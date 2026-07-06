@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import re
@@ -7,6 +8,9 @@ from pathlib import Path
 
 from PIL import Image
 
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
+from doc_chunk.llm.client import FakeLLMClient
 from doc_chunk.workspace.layout import OutputWorkspace
 
 from tender_insights.common.ocr.client import OcrClient
@@ -86,13 +90,28 @@ def _save_cache(workspace: OutputWorkspace, cache: OcrCacheFile) -> None:
     cache_path.write_text(cache.model_dump_json(indent=2), encoding="utf-8")
 
 
+def _bytes_to_data_url(image_bytes: bytes, *, mime: str) -> str:
+    """将图片字节编码为 data URI。"""
+    b64 = base64.standard_b64encode(image_bytes).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+
+def _recognize_via_agent(agent_client: AgentClient, image_bytes: bytes, *, mime: str) -> str:
+    """通过 ocr_image_recognize agent 识别图片文字。"""
+    result = agent_client.invoke(
+        "ocr_image_recognize",
+        {"image_url": _bytes_to_data_url(image_bytes, mime=mime)},
+    )
+    return (result.text_output or "").strip()
+
+
 def _ocr_text_for_ref(
     workspace: OutputWorkspace,
     image_ref: str,
     *,
     config: InsightsConfig,
     cache: OcrCacheFile,
-    client: OcrClient,
+    agent_client: AgentClient,
     api_calls: list[int],
 ) -> OcrCacheEntry:
     path = _resolve_image_path(workspace, image_ref)
@@ -131,7 +150,7 @@ def _ocr_text_for_ref(
         raw = path.read_bytes()
         compressed, mime = _compress_image_bytes(raw, max_long_edge=config.ocr_max_long_edge)
         api_calls[0] += 1
-        text = client.recognize_image_bytes(compressed, mime=mime)
+        text = _recognize_via_agent(agent_client, compressed, mime=mime)
         entry = OcrCacheEntry(
             image_ref=image_ref,
             text=text,
@@ -167,16 +186,37 @@ def _insert_ocr_blocks(content_md: str, ref_to_hash: dict[str, str], ref_to_text
     return "".join(out)
 
 
+def _resolve_ocr_agent_client(
+    *,
+    config: InsightsConfig,
+    agent_client: AgentClient | None,
+    client: OcrClient | None,
+) -> AgentClient:
+    """解析 OCR 用 AgentClient（兼容旧 OcrClient 入参）。"""
+    if agent_client is not None:
+        return agent_client
+    ocr_client = client or OcrClient.from_env(model=config.ocr_model)
+    return create_agent_client_from_env(
+        llm_client=FakeLLMClient(),
+        ocr_client=ocr_client,
+    )
+
+
 def enrich_content_with_ocr(
     workspace: OutputWorkspace,
     content_md: str,
     *,
     config: InsightsConfig,
     client: OcrClient | None = None,
+    agent_client: AgentClient | None = None,
 ) -> tuple[str, OcrCacheFile, int]:
     """Returns (source_content_md, cache, ocr_api_call_count)."""
     cache = _load_cache(workspace)
-    ocr_client = client or OcrClient.from_env(model=config.ocr_model)
+    resolved_agent = _resolve_ocr_agent_client(
+        config=config,
+        agent_client=agent_client,
+        client=client,
+    )
     api_calls = [0]
 
     ref_to_hash: dict[str, str] = {}
@@ -193,7 +233,7 @@ def enrich_content_with_ocr(
             ref,
             config=config,
             cache=cache,
-            client=ocr_client,
+            agent_client=resolved_agent,
             api_calls=api_calls,
         )
         if entry.status == "success":

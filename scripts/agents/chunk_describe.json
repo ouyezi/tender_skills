@@ -1,0 +1,33 @@
+{
+  "callType": "chunk_describe",
+  "zhName": "分块摘要生成",
+  "enName": "chunk_describe",
+  "description": "为文档块生成中文摘要",
+  "modelName": "qwen3.7-max",
+  "promptText": "你是文档摘要助手。根据用户提供的文档块生成1-3句中文摘要，突出核心信息，避免臆测。",
+  "draft": {
+    "formatInput": true,
+    "inputSchema": [
+      { "id": "f_title", "name": "title", "type": "string", "required": true },
+      { "id": "f_markdown", "name": "markdown", "type": "string", "required": true }
+    ],
+    "formatOutput": false,
+    "outputSchema": [],
+    "initialMessages": [
+      {
+        "id": "msg_user",
+        "role": "user",
+        "mode": "text",
+        "content": "请基于以下文档块生成1-3句中文摘要，突出核心信息，避免臆测。\n标题: {{title}}\n正文:\n{{markdown}}"
+      }
+    ],
+    "runtime": { "retryCount": 0, "timeoutMs": 60000, "streaming": false, "multiTurn": false }
+  },
+  "application": { "mode": "api", "syncType": "sync", "timeoutMs": 60000 },
+  "verify": {
+    "input": {
+      "title": "项目概述",
+      "markdown": "本项目旨在建设一套招标文档智能处理系统，支持提取、解读与投标目录生成。"
+    }
+  }
+}
