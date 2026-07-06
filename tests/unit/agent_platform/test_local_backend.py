@@ -107,6 +107,41 @@ def test_local_backend_interpret_segment_returns_structured_output():
     assert result.structured_output["disqualification_items"] == []
 
 
+def test_local_backend_brief_single_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=[
+            '{"fields":{"issuer_company":"A","procurement_subject":"B",'
+            '"budget_info":"未提及","qualification_requirements":"未提及",'
+            '"key_timelines":"未提及"},"summary_text":"概要"}'
+        ]
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "brief_single",
+        {"markdown": "招标人：A。采购：B。", "max_chars": 500},
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["summary_text"] == "概要"
+
+
+def test_local_backend_brief_segment_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=[
+            '{"issuer_company":["A"],"procurement_subject":[],"budget_info":[],'
+            '"qualification_requirements":[],"key_timelines":[]}'
+        ]
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "brief_segment",
+        {"segment_index": 1, "segment_total": 2, "markdown": "招标人：A。"},
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["issuer_company"] == ["A"]
+
+
 def test_local_backend_interpret_overview_returns_structured_output():
     llm = FakeLLMClient(
         responses=[

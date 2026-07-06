@@ -4,6 +4,9 @@ from typing import Any, Callable, Protocol
 
 from doc_chunk.llm.client import LLMClient
 
+from agent_platform.handlers.brief_merge import invoke_brief_merge
+from agent_platform.handlers.brief_segment import invoke_brief_segment
+from agent_platform.handlers.brief_single import invoke_brief_single
 from agent_platform.handlers.chunk_classify import invoke_chunk_classify
 from agent_platform.handlers.chunk_describe import invoke_chunk_describe
 from agent_platform.handlers.interpret_overview import invoke_interpret_overview
@@ -31,6 +34,9 @@ _HANDLERS: dict[str, Handler] = {
     "interpret_segment": invoke_interpret_segment,
     "interpret_scoring_table": invoke_interpret_scoring_table,
     "interpret_overview": invoke_interpret_overview,
+    "brief_single": invoke_brief_single,
+    "brief_segment": invoke_brief_segment,
+    "brief_merge": invoke_brief_merge,
 }
 
 

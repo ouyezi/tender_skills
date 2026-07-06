@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
+from typing import Any
 
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.workspace.layout import OutputWorkspace
 
@@ -20,19 +24,29 @@ from tender_insights.brief.prompts import (
     build_merge_prompt,
     build_single_prompt,
 )
+from tender_insights.common.agent_extractor import extract_json_via_agent
 from tender_insights.common.content_source import prepare_interpret_source
-from tender_insights.common.llm_extractor import extract_json_model
 from tender_insights.common.output_writer import write_json_artifact
 from tender_insights.common.section_slice import slice_for_llm
 from tender_insights.config import InsightsConfig
 from tender_insights.interpret.llm_logging import log_llm_prompt
 
+_BRIEF_FIELD_KEYS = (
+    "issuer_company",
+    "procurement_subject",
+    "budget_info",
+    "qualification_requirements",
+    "key_timelines",
+)
+
 
 def _merge_partial_dicts(partials: list[TenderBriefPartialFacts]) -> list[dict]:
+    """将分片事实模型转为 dict 列表。"""
     return [partial.model_dump() for partial in partials]
 
 
 def _enforce_summary_limit(text: str, *, max_chars: int) -> str:
+    """截断 summary_text 至 max_chars，尽量在句读处断开。"""
     if len(text) <= max_chars:
         return text
     trimmed = text[:max_chars]
@@ -43,21 +57,46 @@ def _enforce_summary_limit(text: str, *, max_chars: int) -> str:
     return trimmed.strip()
 
 
+def _normalize_brief_response(data: dict[str, Any]) -> dict[str, Any]:
+    """兼容平台扁平字段与业务嵌套 fields 两种形态。"""
+    if isinstance(data.get("fields"), dict):
+        return data
+    fields = {key: str(data.get(key) or "未提及") for key in _BRIEF_FIELD_KEYS}
+    return {
+        "fields": fields,
+        "summary_text": str(data.get("summary_text") or "未提及"),
+    }
+
+
+def _resolve_agent_client(
+    client: LLMClient | AgentClient,
+    agent_client: AgentClient | None,
+) -> AgentClient:
+    """解析可用于 invoke 的 AgentClient。"""
+    if agent_client is not None:
+        return agent_client
+    if isinstance(client, AgentClient):
+        return client
+    return create_agent_client_from_env(llm_client=client)
+
+
 def _extract_single(
-    client: LLMClient,
+    agent_client: AgentClient,
     *,
     markdown: str,
     config: InsightsConfig,
     workspace: str,
 ) -> TenderBriefLLMResponse:
+    """单段模式：调用 brief_single。"""
+    max_chars = config.brief_summary_max_chars
     messages = [
         {
             "role": "system",
-            "content": SINGLE_SYSTEM_PROMPT.format(max_chars=config.brief_summary_max_chars),
+            "content": SINGLE_SYSTEM_PROMPT.format(max_chars=max_chars),
         },
         {
             "role": "user",
-            "content": build_single_prompt(markdown=markdown, max_chars=config.brief_summary_max_chars),
+            "content": build_single_prompt(markdown=markdown, max_chars=max_chars),
         },
     ]
     log_llm_prompt(
@@ -66,31 +105,35 @@ def _extract_single(
         workspace=workspace,
         segment_id="brief-001",
     )
-    response = extract_json_model(
-        client,
-        messages,
+    response = extract_json_via_agent(
+        agent_client,
+        "brief_single",
+        {"markdown": markdown, "max_chars": max_chars},
         TenderBriefLLMResponse,
         max_retries=config.max_retries,
+        normalize=_normalize_brief_response,
         log_context={"call_type": "brief_single", "segment_id": "brief-001"},
     )
     response.summary_text = _enforce_summary_limit(
         response.summary_text,
-        max_chars=config.brief_summary_max_chars,
+        max_chars=max_chars,
     )
     return response
 
 
 def _extract_chunked(
-    client: LLMClient,
+    agent_client: AgentClient,
     *,
     chunks: list[str],
     config: InsightsConfig,
     workspace: str,
     on_progress: Callable[[str, dict], None] | None = None,
 ) -> TenderBriefLLMResponse:
+    """分片模式：brief_segment × N + brief_merge。"""
     partials: list[TenderBriefPartialFacts] = []
     total = len(chunks)
     step_total = total + 1
+    max_chars = config.brief_summary_max_chars
     if on_progress:
         on_progress(
             "brief",
@@ -132,9 +175,14 @@ def _extract_chunked(
             workspace=workspace,
             segment_id=segment_id,
         )
-        partial = extract_json_model(
-            client,
-            messages,
+        partial = extract_json_via_agent(
+            agent_client,
+            "brief_segment",
+            {
+                "segment_index": index,
+                "segment_total": total,
+                "markdown": chunk,
+            },
             TenderBriefPartialFacts,
             max_retries=config.max_retries,
             log_context={"call_type": "brief_segment", "segment_id": segment_id},
@@ -154,16 +202,17 @@ def _extract_chunked(
             },
         )
 
+    partial_dicts = _merge_partial_dicts(partials)
     messages = [
         {
             "role": "system",
-            "content": MERGE_SYSTEM_PROMPT.format(max_chars=config.brief_summary_max_chars),
+            "content": MERGE_SYSTEM_PROMPT.format(max_chars=max_chars),
         },
         {
             "role": "user",
             "content": build_merge_prompt(
-                partials=_merge_partial_dicts(partials),
-                max_chars=config.brief_summary_max_chars,
+                partials=partial_dicts,
+                max_chars=max_chars,
             ),
         },
     ]
@@ -173,28 +222,36 @@ def _extract_chunked(
         workspace=workspace,
         segment_id="brief-merge",
     )
-    response = extract_json_model(
-        client,
-        messages,
+    response = extract_json_via_agent(
+        agent_client,
+        "brief_merge",
+        {
+            "partials_json": json.dumps(partial_dicts, ensure_ascii=False),
+            "max_chars": max_chars,
+        },
         TenderBriefLLMResponse,
         max_retries=config.max_retries,
+        normalize=_normalize_brief_response,
         log_context={"call_type": "brief_merge", "segment_id": "brief-merge"},
     )
     response.summary_text = _enforce_summary_limit(
         response.summary_text,
-        max_chars=config.brief_summary_max_chars,
+        max_chars=max_chars,
     )
     return response
 
 
 def extract_brief_workspace(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     config: InsightsConfig | None = None,
     on_progress: Callable[[str, dict], None] | None = None,
+    agent_client: AgentClient | None = None,
 ) -> TenderBriefFile:
+    """提取招标基础概要并写入 tender_brief.json / tender_brief.txt。"""
     config = config or InsightsConfig.from_env()
+    resolved = _resolve_agent_client(client, agent_client)
     if on_progress:
         ocr_note = "含图片 OCR" if config.brief_ocr_enabled else "跳过图片 OCR"
         on_progress(
@@ -250,7 +307,7 @@ def extract_brief_workspace(
                 },
             )
         extracted = _extract_single(
-            client,
+            resolved,
             markdown=chunks[0],
             config=config,
             workspace=str(workspace.root),
@@ -264,7 +321,7 @@ def extract_brief_workspace(
         )
     else:
         extracted = _extract_chunked(
-            client,
+            resolved,
             chunks=chunks,
             config=config,
             workspace=str(workspace.root),
