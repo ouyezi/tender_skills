@@ -107,6 +107,42 @@ def test_local_backend_interpret_segment_returns_structured_output():
     assert result.structured_output["disqualification_items"] == []
 
 
+def test_local_backend_template_plan_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=['{"shard_count":1,"priority_sections":["格式"],"notes":"ok"}']
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "template_plan",
+        {
+            "doc_title": "招标文件",
+            "shard_summaries_json": '[{"shard_id":"s1","section_path":["格式"],'
+            '"char_count":10,"strategy":"section"}]',
+        },
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["shard_count"] == 1
+
+
+def test_local_backend_legal_section_review_returns_structured_output():
+    llm = FakeLLMClient(
+        responses=['{"risk_items":[],"pending_confirmations":[]}']
+    )
+    client = AgentClient(LocalBackend(llm_client=llm))
+    result = client.invoke(
+        "legal_section_review",
+        {
+            "section_title": "合同条款",
+            "section_path": "第四章 > 合同条款",
+            "markdown": "招标人不承担责任。",
+        },
+    )
+    assert result.status == "completed"
+    assert result.structured_output is not None
+    assert result.structured_output["risk_items"] == []
+
+
 def test_local_backend_gen_catalog_initial_returns_structured_output():
     llm = FakeLLMClient(
         responses=[

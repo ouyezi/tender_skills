@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
+
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
 from doc_chunk.workspace.manifest_io import load_manifest
 
-from tender_insights.common.llm_extractor import extract_json_model
+from tender_insights.common.agent_extractor import extract_json_via_agent
 from tender_insights.common.output_writer import write_json_artifact
 from tender_insights.config import InsightsConfig
 from tender_insights.interpret.llm_logging import log_llm_prompt
@@ -15,10 +19,23 @@ from tender_insights.template.sharder import build_template_shards
 
 
 def _read_manifest_title(workspace: OutputWorkspace) -> str:
+    """从 manifest 读取文档标题。"""
     if not workspace.manifest_path.exists():
         return ""
     manifest = load_manifest(workspace.manifest_path)
     return manifest.source.title or manifest.source.file_name or ""
+
+
+def _resolve_agent_client(
+    client: LLMClient | AgentClient,
+    agent_client: AgentClient | None = None,
+) -> AgentClient:
+    """解析可用于 invoke 的 AgentClient。"""
+    if agent_client is not None:
+        return agent_client
+    if isinstance(client, AgentClient):
+        return client
+    return create_agent_client_from_env(llm_client=client)
 
 
 def build_deterministic_plan(
@@ -26,6 +43,7 @@ def build_deterministic_plan(
     outline: OutlineTree,
     config: InsightsConfig,
 ) -> TemplatePlanFile:
+    """按规则构建确定性分片计划（不调用 LLM）。"""
     shards = build_template_shards(content_md, outline, config=config)
     return TemplatePlanFile(
         whole_doc_chars=len(content_md),
@@ -35,6 +53,7 @@ def build_deterministic_plan(
 
 
 def write_plan_json(workspace: OutputWorkspace, plan: TemplatePlanFile) -> None:
+    """写入 templates/plan.json。"""
     write_json_artifact(
         workspace,
         "templates/plan.json",
@@ -46,14 +65,18 @@ def write_plan_json(workspace: OutputWorkspace, plan: TemplatePlanFile) -> None:
 
 def run_template_plan_llm(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     plan: TemplatePlanFile,
     doc_title: str,
     config: InsightsConfig,
+    *,
+    agent_client: AgentClient | None = None,
 ) -> TemplatePlanFile:
+    """调用 template_plan agent 补充计划 notes / priority_sections。"""
     if not config.template_plan_enabled:
         return plan
 
+    resolved = _resolve_agent_client(client, agent_client)
     shard_summaries = [
         {
             "shard_id": shard.shard_id,
@@ -79,9 +102,13 @@ def run_template_plan_llm(
         workspace=str(workspace.root),
         segment_id="plan",
     )
-    response = extract_json_model(
-        client,
-        messages,
+    response = extract_json_via_agent(
+        resolved,
+        "template_plan",
+        {
+            "doc_title": doc_title,
+            "shard_summaries_json": json.dumps(shard_summaries, ensure_ascii=False),
+        },
         TemplatePlanLLMResponse,
         max_retries=config.max_retries,
         log_context={"call_type": "template_plan", "segment_id": "plan"},

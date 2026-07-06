@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
+from agent_platform.client import AgentClient
+from agent_platform.factory import create_agent_client_from_env
 from doc_chunk.llm.client import LLMClient
 from doc_chunk.models.outline import OutlineTree
 from doc_chunk.workspace.layout import OutputWorkspace
 from doc_chunk.workspace.manifest_io import load_manifest, save_manifest
 
-from tender_insights.common.llm_extractor import extract_json_model
+from tender_insights.common.agent_extractor import extract_json_via_agent
 from tender_insights.common.output_writer import write_json_artifact
 from tender_insights.common.section_slice import slice_for_llm
 from tender_insights.config import InsightsConfig
@@ -105,14 +107,29 @@ def _materialize_templates(
     return entries, warnings
 
 
+def _resolve_agent_client(
+    client: LLMClient | AgentClient,
+    agent_client: AgentClient | None = None,
+) -> AgentClient:
+    """解析可用于 invoke 的 AgentClient。"""
+    if agent_client is not None:
+        return agent_client
+    if isinstance(client, AgentClient):
+        return client
+    return create_agent_client_from_env(llm_client=client)
+
+
 def extract_templates_workspace(
     workspace: OutputWorkspace,
-    client: LLMClient,
+    client: LLMClient | AgentClient,
     *,
     config: InsightsConfig | None = None,
     on_progress: Callable[[str, dict], None] | None = None,
+    agent_client: AgentClient | None = None,
 ) -> TemplatesIndexFile:
+    """提取投标提交模板并写入 templates/index.json。"""
     config = config or InsightsConfig.from_env()
+    resolved = _resolve_agent_client(client, agent_client)
     content_md = workspace.content_path.read_text(encoding="utf-8")
     outline = OutlineTree.model_validate_json(workspace.outline_path.read_text(encoding="utf-8"))
     doc_title = _read_manifest_title(workspace)
@@ -122,7 +139,14 @@ def extract_templates_workspace(
 
     plan = build_deterministic_plan(content_md, outline, config)
     if config.template_plan_enabled:
-        plan = run_template_plan_llm(workspace, client, plan, doc_title, config)
+        plan = run_template_plan_llm(
+            workspace,
+            resolved,
+            plan,
+            doc_title,
+            config,
+            agent_client=resolved,
+        )
     write_plan_json(workspace, plan)
 
     total_steps = plan.shard_count + 2
@@ -160,9 +184,16 @@ def extract_templates_workspace(
             section_path=shard.section_path,
         )
         try:
-            batch = extract_json_model(
-                client,
-                messages,
+            batch = extract_json_via_agent(
+                resolved,
+                "template_extract",
+                {
+                    "shard_id": shard.shard_id,
+                    "section_path": " > ".join(shard.section_path) if shard.section_path else "(root)",
+                    "strategy": shard.strategy,
+                    "char_count": shard.char_count,
+                    "markdown": shard_md,
+                },
                 TemplateExtractResponse,
                 max_retries=config.max_retries,
                 log_context={

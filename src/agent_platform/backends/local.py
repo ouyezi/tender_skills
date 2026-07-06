@@ -15,8 +15,11 @@ from agent_platform.handlers.gen_catalog_node_plan import invoke_gen_catalog_nod
 from agent_platform.handlers.interpret_overview import invoke_interpret_overview
 from agent_platform.handlers.interpret_scoring_table import invoke_interpret_scoring_table
 from agent_platform.handlers.interpret_segment import invoke_interpret_segment
+from agent_platform.handlers.legal_section_review import invoke_legal_section_review
 from agent_platform.handlers.ocr_image_recognize import invoke_ocr_image_recognize
 from agent_platform.handlers.outline_refine import invoke_outline_refine
+from agent_platform.handlers.template_extract import invoke_template_extract
+from agent_platform.handlers.template_plan import invoke_template_plan
 from agent_platform.models import AgentInvokeError, AgentInvokeResult
 
 
@@ -43,6 +46,9 @@ _HANDLERS: dict[str, Handler] = {
     "gen_catalog_initial": invoke_gen_catalog_initial,
     "gen_catalog_node_plan": invoke_gen_catalog_node_plan,
     "gen_catalog_node_apply": invoke_gen_catalog_node_apply,
+    "template_plan": invoke_template_plan,
+    "template_extract": invoke_template_extract,
+    "legal_section_review": invoke_legal_section_review,
 }
 
 
