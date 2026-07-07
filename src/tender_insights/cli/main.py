@@ -14,7 +14,7 @@ from tender_insights.api import (
     render_interpretation_report,
     resolve_workspace_path,
     review_legal,
-    run_diagnosis_job,
+    run_bid_summary_job,
     run_gen_catalog_job,
     run_interpret_job,
     run_summary_loop_job,
@@ -148,28 +148,29 @@ def loop_cmd(
     typer.echo(f"Wrote {loop_dir / 'report.md'}")
 
 
-@app.command("diagnose")
-def diagnose_cmd(
+@app.command("bid-summary", help="对标书分段滚动总结（需 summary_loop/report.md 与 chunks/）")
+def bid_summary_cmd(
     path: Path = typer.Argument(..., help="已有工作区目录（须含 summary_loop/report.md 与 chunks/）"),
     overwrite: bool = typer.Option(False, "--overwrite"),
     timeout: int | None = typer.Option(None, "--timeout", help="单次 invoke 超时秒数，默认 600"),
 ) -> None:
     ws = _resolve_workspace(path, None, overwrite=False)
     try:
-        result = run_diagnosis_job(ws, overwrite=overwrite, timeout_s=timeout)
+        result = run_bid_summary_job(ws, overwrite=overwrite, timeout_s=timeout)
     except DiagnosisPrerequisiteError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    diag_dir = ws.root / "diagnosis"
+    summary_dir = ws.root / "bid_summary"
     if result.status != "completed":
         typer.echo(
-            f"Diagnosis failed at segment {result.failed_segment}: {result.error_message}",
+            f"标书总结失败，停在分段 {result.failed_segment}: {result.error_message}",
             err=True,
         )
-        typer.echo(f"Partial results written to {diag_dir}")
+        typer.echo(f"Partial results written to {summary_dir}")
         raise typer.Exit(code=1)
-    typer.echo(f"Wrote {diag_dir / 'total_summary.md'}")
-    typer.echo(f"Wrote {diag_dir / 'run_state.json'}")
+    typer.echo(f"Wrote {summary_dir / 'total_summary.md'}")
+    typer.echo(f"Wrote {summary_dir / 'sec_in_total.json'}")
+    typer.echo(f"Wrote {summary_dir / 'run_state.json'}")
 
 
 @app.command("all")

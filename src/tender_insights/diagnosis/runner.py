@@ -22,6 +22,7 @@ from tender_insights.diagnosis.segment_optimizer import optimize_segments
 from tender_insights.diagnosis.writer import (
     init_diagnosis_dir,
     write_run_state,
+    write_sec_in_total_index,
     write_segment_result,
     write_segments_plan,
     write_total_summary,
@@ -50,9 +51,9 @@ class DiagnosisRunner:
         for segment in state.segments:
             if self._on_progress:
                 self._on_progress(
-                    "diagnosis",
+                    "bid_summary",
                     {
-                        "message": f"诊断分段 {segment.segment_index}/{total}",
+                        "message": f"标书总结分段 {segment.segment_index}/{total}",
                         "current": segment.segment_index,
                         "total": total,
                     },
@@ -157,6 +158,8 @@ def run_diagnosis(
         write_segment_result(diag_dir, step_result)
 
     write_run_state(diag_dir, result)
+    if result.step_results:
+        write_sec_in_total_index(diag_dir, result.step_results)
     if result.state.preview_summary:
         write_total_summary(diag_dir, result.state.preview_summary)
 

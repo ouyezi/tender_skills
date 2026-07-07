@@ -29,6 +29,7 @@ class DiagnosisInvokeTimeoutError(DiagnosisInvokeError):
 class ChunkSummaryOutput(BaseModel):
     current_summary: str
     total_summary: str
+    sec_in_total: str
 
 
 @dataclass(frozen=True)

@@ -38,7 +38,7 @@ def test_diagnosis_state_to_invoke_input():
 
 def test_diagnosis_state_apply_output_updates_preview():
     state = DiagnosisState(tender_report="r", preview_summary="", segments=[])
-    out = ChunkSummaryOutput(current_summary="当前", total_summary="整体")
+    out = ChunkSummaryOutput(current_summary="当前", total_summary="整体", sec_in_total="本章作用")
     state.apply_output(out)
     assert state.preview_summary == "整体"
 

@@ -30,11 +30,12 @@ def test_cli_loop_help() -> None:
     assert "--timeout" in result.stdout
 
 
-def test_cli_diagnose_help() -> None:
-    result = CliRunner().invoke(app, ["diagnose", "--help"])
+def test_cli_bid_summary_help() -> None:
+    result = CliRunner().invoke(app, ["bid-summary", "--help"])
     assert result.exit_code == 0
     assert "--overwrite" in result.stdout
     assert "--timeout" in result.stdout
+    assert "标书" in result.stdout
 
 
 def test_render_missing_interpretation_exits_1(tmp_path: Path) -> None:

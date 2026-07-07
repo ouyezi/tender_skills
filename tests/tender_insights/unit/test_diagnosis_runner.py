@@ -42,8 +42,8 @@ def _state_with_two_segments() -> DiagnosisState:
 def test_runner_passes_preview_summary_across_segments():
     client = FakeDiagnosisClient(
         outcomes=[
-            ChunkSummaryOutput(current_summary="c1", total_summary="t1"),
-            ChunkSummaryOutput(current_summary="c2", total_summary="t2"),
+            ChunkSummaryOutput(current_summary="c1", total_summary="t1", sec_in_total="s1"),
+            ChunkSummaryOutput(current_summary="c2", total_summary="t2", sec_in_total="s2"),
         ],
     )
     runner = DiagnosisRunner(client=client)
@@ -61,8 +61,8 @@ def test_runner_retries_once_on_invoke_error():
     client = FakeDiagnosisClient(
         outcomes=[
             DiagnosisInvokeError("boom"),
-            ChunkSummaryOutput(current_summary="c1", total_summary="t1"),
-            ChunkSummaryOutput(current_summary="c2", total_summary="t2"),
+            ChunkSummaryOutput(current_summary="c1", total_summary="t1", sec_in_total="s1"),
+            ChunkSummaryOutput(current_summary="c2", total_summary="t2", sec_in_total="s2"),
         ],
     )
     runner = DiagnosisRunner(client=client)

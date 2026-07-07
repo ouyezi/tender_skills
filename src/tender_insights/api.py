@@ -176,7 +176,7 @@ def run_summary_loop_job(
     )
 
 
-def run_diagnosis_job(
+def run_bid_summary_job(
     workspace: OutputWorkspace,
     *,
     on_progress: Callable[[str, dict], None] | None = None,

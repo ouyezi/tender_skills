@@ -25,6 +25,7 @@ def test_invoke_returns_structured_output():
             "structuredOutput": {
                 "current_summary": "当前",
                 "total_summary": "整体",
+                "sec_in_total": "本章在标书中的作用",
             },
         }
     ).encode("utf-8")
@@ -48,7 +49,11 @@ def test_invoke_returns_structured_output():
     with patch("urllib.request.urlopen", side_effect=_urlopen):
         result = client.invoke({"chunk": "x", "current_count": "1"})
 
-    assert result.output == ChunkSummaryOutput(current_summary="当前", total_summary="整体")
+    assert result.output == ChunkSummaryOutput(
+        current_summary="当前",
+        total_summary="整体",
+        sec_in_total="本章在标书中的作用",
+    )
     assert captured["timeout"] == 600
     assert captured["body"]["appName"] == APP_NAME
     assert captured["headers"]["X-api-key"] == "test-key"

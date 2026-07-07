@@ -98,7 +98,11 @@ class DiagnosisClient:
         except Exception as exc:
             raise DiagnosisInvokeError(f"invalid structuredOutput: {exc}", elapsed_ms=duration_ms) from exc
 
-        if not output.current_summary.strip() or not output.total_summary.strip():
+        if (
+            not output.current_summary.strip()
+            or not output.total_summary.strip()
+            or not output.sec_in_total.strip()
+        ):
             raise DiagnosisInvokeError("empty summary fields in structuredOutput", elapsed_ms=duration_ms)
 
         return InvokeStructuredResult(output=output, duration_ms=duration_ms, raw_response=payload)
@@ -108,7 +112,7 @@ def create_diagnosis_client_from_env() -> DiagnosisClient:
     base_url = os.environ.get("AGENT_PLATFORM_BASE_URL", "http://localhost:8000")
     api_key = os.environ.get("AGENT_PLATFORM_API_KEY", "").strip()
     if not api_key:
-        raise DiagnosisInvokeError("AGENT_PLATFORM_API_KEY is required for diagnosis")
+        raise DiagnosisInvokeError("AGENT_PLATFORM_API_KEY is required for bid summary")
     timeout_raw = os.environ.get("DIAGNOSIS_INVOKE_TIMEOUT_S", "600").strip()
     timeout_s = int(timeout_raw)
     return DiagnosisClient(base_url=base_url, api_key=api_key, timeout_s=timeout_s)
