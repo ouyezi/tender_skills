@@ -1,1 +1,3 @@
-# Task 6 完成后在此导出 run_diagnosis
+from tender_insights.diagnosis.runner import run_diagnosis
+
+__all__ = ["run_diagnosis"]
