@@ -174,3 +174,20 @@ def run_summary_loop_job(
         overwrite=overwrite,
         timeout_s=timeout_s,
     )
+
+
+def run_diagnosis_job(
+    workspace: OutputWorkspace,
+    *,
+    on_progress: Callable[[str, dict], None] | None = None,
+    overwrite: bool = False,
+    timeout_s: int | None = None,
+):
+    from tender_insights.diagnosis.runner import run_diagnosis
+
+    return run_diagnosis(
+        workspace,
+        on_progress=on_progress,
+        overwrite=overwrite,
+        timeout_s=timeout_s,
+    )

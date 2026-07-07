@@ -30,6 +30,13 @@ def test_cli_loop_help() -> None:
     assert "--timeout" in result.stdout
 
 
+def test_cli_diagnose_help() -> None:
+    result = CliRunner().invoke(app, ["diagnose", "--help"])
+    assert result.exit_code == 0
+    assert "--overwrite" in result.stdout
+    assert "--timeout" in result.stdout
+
+
 def test_render_missing_interpretation_exits_1(tmp_path: Path) -> None:
     ws_root = tmp_path / "ws"
     ws_root.mkdir()
