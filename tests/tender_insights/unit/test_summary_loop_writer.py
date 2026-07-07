@@ -27,7 +27,7 @@ def test_write_step_and_results(tmp_path: Path):
             tender_info="i",
             task_background="b",
             tender_summary="概要",
-            report="报告",
+            analysis_report="报告",
         ),
         completed_steps=["get_tender_summary"],
         step_results=[StepResult("get_tender_summary", "概要", 100, 1)],
@@ -40,4 +40,6 @@ def test_write_step_and_results(tmp_path: Path):
     assert run_state["status"] == "completed"
     results = json.loads((loop_dir / "results.json").read_text(encoding="utf-8"))
     assert results["tender_summary"] == "概要"
+    assert results["schema_version"] == "1.1"
     assert (loop_dir / "report.md").read_text(encoding="utf-8") == "报告"
+    assert (loop_dir / "analysis_report.md").read_text(encoding="utf-8") == "报告"

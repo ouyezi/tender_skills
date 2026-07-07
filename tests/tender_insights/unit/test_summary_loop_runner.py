@@ -30,9 +30,9 @@ class FakeSummaryLoopClient:
         return InvokeTextResult(output=outcome, duration_ms=10, raw_response={"status": "completed"})
 
 
-def test_runner_accumulates_state_across_five_steps():
+def test_runner_accumulates_state_across_seven_steps():
     client = FakeSummaryLoopClient(
-        outcomes=["概要", "得分", "废标", "响应", "完整报告"],
+        outcomes=["概要", "得分", "废标", "响应", "无", "诊断要点", "完整报告"],
     )
     runner = SummaryLoopRunner(client=client)
     result = runner.run(LoopState(tender_info="正文", task_background="背景"))
@@ -40,10 +40,12 @@ def test_runner_accumulates_state_across_five_steps():
     assert result.status == "completed"
     assert result.state.tender_summary == "概要"
     assert result.state.score_points == "得分"
-    assert result.state.report == "完整报告"
-    assert len(result.completed_steps) == 5
-    assert client.calls[1]["tender_summary"] == "概要"
-    assert client.calls[4]["disqualification_items"] == "废标"
+    assert result.state.needs_clarify == "无"
+    assert result.state.diagnosis_criteria == "诊断要点"
+    assert result.state.analysis_report == "完整报告"
+    assert len(result.completed_steps) == 7
+    assert client.calls[5]["needs_clearify"] == "无"
+    assert client.calls[6]["diagnosis_criteria"] == "诊断要点"
 
 
 def test_runner_retries_once_on_invoke_error():
@@ -54,6 +56,8 @@ def test_runner_retries_once_on_invoke_error():
             "得分",
             "废标",
             "响应",
+            "无",
+            "诊断要点",
             "完整报告",
         ],
     )
