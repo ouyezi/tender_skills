@@ -14,6 +14,18 @@ from tender_insights.summary_loop.models import SummaryLoopInvokeError, SummaryL
 APP_NAME = "tender_summary_app"
 
 
+def _validate_http_header_value(name: str, value: str) -> str:
+    """HTTP 请求头仅支持 latin-1；非 ASCII 会在 urllib 层抛 UnicodeEncodeError。"""
+    try:
+        value.encode("latin-1")
+    except UnicodeEncodeError as exc:
+        raise SummaryLoopInvokeError(
+            f"{name} must contain only ASCII characters (HTTP header limit); "
+            f"check that AGENT_PLATFORM_API_KEY is the platform API key, not Chinese text or LLM_API_KEY"
+        ) from exc
+    return value
+
+
 @dataclass(frozen=True)
 class InvokeTextResult:
     output: str
@@ -24,7 +36,7 @@ class InvokeTextResult:
 class SummaryLoopClient:
     def __init__(self, *, base_url: str, api_key: str, timeout_s: int = 600) -> None:
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        self.api_key = _validate_http_header_value("X-API-Key", api_key.strip())
         self.timeout_s = timeout_s
 
     def invoke(self, input: dict[str, Any]) -> InvokeTextResult:

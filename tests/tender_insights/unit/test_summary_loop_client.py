@@ -73,6 +73,11 @@ def test_invoke_timeout_maps_to_timeout_error():
     assert exc_info.value.configured_timeout_s == 600
 
 
+def test_non_ascii_api_key_raises_clear_error():
+    with pytest.raises(SummaryLoopInvokeError, match="ASCII characters"):
+        SummaryLoopClient(base_url="http://localhost:8000", api_key="中文密钥", timeout_s=600)
+
+
 def test_create_client_from_env(monkeypatch):
     monkeypatch.setenv("AGENT_PLATFORM_BASE_URL", "http://127.0.0.1:8000")
     monkeypatch.setenv("AGENT_PLATFORM_API_KEY", "env-key")
