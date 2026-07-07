@@ -155,3 +155,22 @@ def continue_gen_catalog(workspace: OutputWorkspace, **kwargs):
 
 def accept_gen_catalog(workspace: OutputWorkspace):
     return accept_gen_catalog_draft(workspace)
+
+
+def run_summary_loop_job(
+    workspace: OutputWorkspace,
+    *,
+    task_background: str,
+    on_progress: Callable[[str, dict], None] | None = None,
+    overwrite: bool = False,
+    timeout_s: int | None = None,
+):
+    from tender_insights.summary_loop.runner import run_summary_loop
+
+    return run_summary_loop(
+        workspace,
+        task_background=task_background,
+        on_progress=on_progress,
+        overwrite=overwrite,
+        timeout_s=timeout_s,
+    )
