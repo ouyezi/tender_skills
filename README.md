@@ -473,6 +473,17 @@ python -m pytest tests/tender_insights/ -v
   -o ./output/my-bid \
   --overwrite
 
+# 标书解读循环：顺序调用平台 tender_summary_app（概要→得分项→废标项→响应要求→完整报告）
+export AGENT_PLATFORM_API_KEY=your-key
+export AGENT_PLATFORM_BASE_URL=http://localhost:8000
+
+.venv/bin/tender-insights loop /path/to/bid.docx \
+  -o ./output/my-bid \
+  --background "本次投标重点关注价格分和技术方案" \
+  --overwrite
+
+# 产物目录：{workspace}/summary_loop/（results.json、report.md、run_state.json）
+
 # 投标目录方案：基于解读结果生成目录树（概要 + 撰写规范 + 废标/评分引用）
 .venv/bin/tender-insights gen-catalog ./output/my-bid --step --once
 .venv/bin/tender-insights gen-catalog ./output/my-bid --continue

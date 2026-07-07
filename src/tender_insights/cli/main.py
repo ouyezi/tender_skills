@@ -16,6 +16,7 @@ from tender_insights.api import (
     review_legal,
     run_gen_catalog_job,
     run_interpret_job,
+    run_summary_loop_job,
 )
 from tender_insights.errors import WorkspaceResolveError
 
@@ -119,6 +120,30 @@ def gen_catalog_cmd(
         run_limit=run_limit,
     )
     typer.echo(f"Wrote {ws.root / 'bid_outline.draft.json'}")
+
+
+@app.command("loop")
+def loop_cmd(
+    paths: list[Path] = typer.Argument(..., help="工作区目录或原始文档"),
+    output: Path | None = typer.Option(None, "-o", "--output"),
+    background: str = typer.Option(..., "--background", help="任务背景描述"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+    timeout: int | None = typer.Option(None, "--timeout", help="单次 invoke 超时秒数，默认 600"),
+) -> None:
+    ws = _resolve_workspaces(paths, output, overwrite)
+    result = run_summary_loop_job(
+        ws,
+        task_background=background,
+        overwrite=overwrite,
+        timeout_s=timeout,
+    )
+    loop_dir = ws.root / "summary_loop"
+    if result.status != "completed":
+        typer.echo(f"Summary loop failed at step {result.failed_step}: {result.error_message}", err=True)
+        typer.echo(f"Partial results written to {loop_dir}")
+        raise typer.Exit(code=1)
+    typer.echo(f"Wrote {loop_dir / 'results.json'}")
+    typer.echo(f"Wrote {loop_dir / 'report.md'}")
 
 
 @app.command("all")
