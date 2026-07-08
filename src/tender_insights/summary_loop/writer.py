@@ -38,6 +38,7 @@ def write_results(loop_dir: Path, result: LoopRunResult) -> Path:
         json.dumps(result.to_results_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    if result.state.report:
-        (loop_dir / "report.md").write_text(result.state.report, encoding="utf-8")
+    if result.state.analysis_report:
+        (loop_dir / "report.md").write_text(result.state.analysis_report, encoding="utf-8")
+        (loop_dir / "analysis_report.md").write_text(result.state.analysis_report, encoding="utf-8")
     return dest

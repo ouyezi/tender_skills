@@ -29,6 +29,28 @@ def test_loop_state_to_invoke_input_includes_task_fields():
     assert payload["tender_summary"] == ""
 
 
+def test_loop_state_to_invoke_input_includes_api_fields():
+    state = LoopState(
+        tender_info="正文",
+        task_background="背景",
+        needs_clarify="需澄清",
+        diagnosis_criteria="诊断",
+        analysis_report="报告",
+    )
+    task = TaskDefinition(
+        step_index=6,
+        current_task="diagnosis_criteria",
+        task_skills="诊断",
+        output_requirement="输出诊断",
+        output_field="diagnosis_criteria",
+        step_filename="06_diagnosis_criteria.md",
+    )
+    payload = state.to_invoke_input(task)
+    assert payload["needs_clearify"] == "需澄清"
+    assert payload["analysisi_report"] == "报告"
+    assert payload["diagnosis_criteria"] == "诊断"
+
+
 def test_loop_state_apply_output_updates_field():
     state = LoopState(tender_info="x", task_background="y")
     task = TaskDefinition(

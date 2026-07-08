@@ -38,7 +38,9 @@ class LoopState:
     score_points: str = ""
     disqualification_items: str = ""
     tender_responds: str = ""
-    report: str = ""
+    needs_clarify: str = ""
+    diagnosis_criteria: str = ""
+    analysis_report: str = ""
 
     def to_invoke_input(self, task: TaskDefinition) -> dict[str, str]:
         return {
@@ -48,6 +50,9 @@ class LoopState:
             "score_points": self.score_points,
             "disqualification_items": self.disqualification_items,
             "tender_responds": self.tender_responds,
+            "needs_clearify": self.needs_clarify,
+            "diagnosis_criteria": self.diagnosis_criteria,
+            "analysisi_report": self.analysis_report,
             "current_task": task.current_task,
             "task_skills": task.task_skills,
             "output_requirement": task.output_requirement,
@@ -55,7 +60,7 @@ class LoopState:
 
     def apply_output(self, task: TaskDefinition, output: str) -> None:
         if task.output_field is None:
-            self.report = output
+            self.analysis_report = output
             return
         setattr(self, task.output_field, output)
 
@@ -107,13 +112,15 @@ class LoopRunResult:
 
     def to_results_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "task_background": self.state.task_background,
             "tender_summary": self.state.tender_summary,
             "score_points": self.state.score_points,
             "disqualification_items": self.state.disqualification_items,
             "tender_responds": self.state.tender_responds,
-            "report": self.state.report,
+            "needs_clarify": self.state.needs_clarify,
+            "diagnosis_criteria": self.state.diagnosis_criteria,
+            "analysis_report": self.state.analysis_report,
             "completed_steps": self.completed_steps,
             "status": self.status,
         }

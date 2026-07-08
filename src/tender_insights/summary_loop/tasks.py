@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from tender_insights.common.diagnosis_prompts import DIAGNOSIS_CHECKLIST, DIAGNOSIS_SKILLS
 from tender_insights.summary_loop.models import TaskDefinition
 
 TASK_DEFINITIONS: list[TaskDefinition] = [
@@ -37,10 +38,30 @@ TASK_DEFINITIONS: list[TaskDefinition] = [
     ),
     TaskDefinition(
         step_index=5,
+        current_task="clearify_needs",
+        task_skills="你擅长识别招标文件中描述不清晰、存在歧义或信息缺失的条款，判断哪些内容需要向发标方澄清确认。",
+        output_requirement="从招标文件中找出需与发标方确认的不清晰内容。若无，仅输出「无」；若有，逐条给出问题描述、条款出处及建议确认事项。",
+        output_field="needs_clarify",
+        step_filename="05_clarify_needs.txt",
+    ),
+    TaskDefinition(
+        step_index=6,
+        current_task="diagnosis_criteria",
+        task_skills=DIAGNOSIS_SKILLS,
+        output_requirement=DIAGNOSIS_CHECKLIST,
+        output_field="diagnosis_criteria",
+        step_filename="06_diagnosis_criteria.md",
+    ),
+    TaskDefinition(
+        step_index=7,
         current_task="generate_report",
-        task_skills="你擅长将招标解读结果整合为面向投标团队的完整解读报告。",
-        output_requirement="综合 tender_summary、score_points、disqualification_items、tender_responds，输出完整 Markdown 解读报告，含执行摘要、得分策略建议、废标风险提示、投标准备清单。",
-        output_field=None,
-        step_filename="05_report.md",
+        task_skills="你擅长将招标解读与标书诊断结果整合为面向投标团队的完整解读报告。",
+        output_requirement=(
+            "综合 tender_summary、score_points、disqualification_items、tender_responds、"
+            "needs_clearify、diagnosis_criteria，输出完整 Markdown 解读报告，"
+            "含执行摘要、得分策略建议、废标风险提示、澄清事项、诊断要点摘要与投标准备清单。"
+        ),
+        output_field="analysis_report",
+        step_filename="07_analysis_report.md",
     ),
 ]
