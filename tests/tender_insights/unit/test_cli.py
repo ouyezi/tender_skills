@@ -38,6 +38,13 @@ def test_cli_bid_summary_help() -> None:
     assert "标书" in result.stdout
 
 
+def test_cli_bid_diagnose_help() -> None:
+    result = CliRunner().invoke(app, ["bid-diagnose", "--help"])
+    assert result.exit_code == 0
+    assert "bid-diagnose" in result.stdout
+    assert "--background" in result.stdout
+
+
 def test_render_missing_interpretation_exits_1(tmp_path: Path) -> None:
     ws_root = tmp_path / "ws"
     ws_root.mkdir()

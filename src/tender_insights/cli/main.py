@@ -14,11 +14,13 @@ from tender_insights.api import (
     render_interpretation_report,
     resolve_workspace_path,
     review_legal,
+    run_bid_diagnose_job,
     run_bid_summary_job,
     run_gen_catalog_job,
     run_interpret_job,
     run_summary_loop_job,
 )
+from tender_insights.bid_diagnose.models import BidDiagnosePrerequisiteError
 from tender_insights.diagnosis.models import DiagnosisPrerequisiteError
 from tender_insights.errors import WorkspaceResolveError
 
@@ -171,6 +173,37 @@ def bid_summary_cmd(
     typer.echo(f"Wrote {summary_dir / 'total_summary.md'}")
     typer.echo(f"Wrote {summary_dir / 'sec_in_total.json'}")
     typer.echo(f"Wrote {summary_dir / 'run_state.json'}")
+
+
+@app.command("bid-diagnose", help="对标书分片滚动诊断（需 bid_summary/ 已完成）")
+def bid_diagnose_cmd(
+    path: Path = typer.Argument(..., help="已有工作区目录（须含 bid_summary/ 与 chunks/）"),
+    background: str = typer.Option("", "--background", help="bid_background，可为空"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+    timeout: int | None = typer.Option(None, "--timeout", help="单次 invoke 超时秒数，默认 600"),
+) -> None:
+    ws = _resolve_workspace(path, None, overwrite=False)
+    try:
+        result = run_bid_diagnose_job(
+            ws,
+            bid_background=background,
+            overwrite=overwrite,
+            timeout_s=timeout,
+        )
+    except BidDiagnosePrerequisiteError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    diag_dir = ws.root / "bid_diagnose"
+    if result.status != "completed":
+        typer.echo(
+            f"标书诊断失败，停在分段 {result.failed_segment} / 任务 {result.failed_task}: "
+            f"{result.error_message}",
+            err=True,
+        )
+        typer.echo(f"Partial results written to {diag_dir}")
+        raise typer.Exit(code=1)
+    typer.echo(f"Wrote {diag_dir / 'diagnose_result.md'}")
+    typer.echo(f"Wrote {diag_dir / 'run_state.json'}")
 
 
 @app.command("all")

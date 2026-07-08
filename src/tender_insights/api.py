@@ -191,3 +191,22 @@ def run_bid_summary_job(
         overwrite=overwrite,
         timeout_s=timeout_s,
     )
+
+
+def run_bid_diagnose_job(
+    workspace: OutputWorkspace,
+    *,
+    bid_background: str = "",
+    on_progress: Callable[[str, dict], None] | None = None,
+    overwrite: bool = False,
+    timeout_s: int | None = None,
+):
+    from tender_insights.bid_diagnose.runner import run_bid_diagnose
+
+    return run_bid_diagnose(
+        workspace,
+        bid_background=bid_background,
+        on_progress=on_progress,
+        overwrite=overwrite,
+        timeout_s=timeout_s,
+    )
