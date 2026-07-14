@@ -15,6 +15,7 @@ from doc_chunk.outline.heading_heuristic import (
     extract_content_heuristic_outline,
     extract_heading_outline,
 )
+from doc_chunk.outline.toc_bookmark import apply_toc_bookmark_anchors
 from doc_chunk.outline.toc_docx import extract_docx_toc_outline
 from doc_chunk.outline.toc_pdf import extract_pdf_bookmark_outline
 from doc_chunk.workspace.layout import OutputWorkspace
@@ -80,6 +81,9 @@ def build_outline_from_workspace(workspace: OutputWorkspace, source_path: Path) 
                     blocks.model_dump_json(indent=2),
                     encoding="utf-8",
                 )
+
+    if tree.strategy == "toc" and suffix in {".docx", ".docm", ".doc"} and blocks is not None:
+        tree = apply_toc_bookmark_anchors(tree, source_path, blocks, content_md=content_md)
 
     if blocks is not None:
         tree = enrich_outline_anchors(tree, blocks, content_md=content_md)
