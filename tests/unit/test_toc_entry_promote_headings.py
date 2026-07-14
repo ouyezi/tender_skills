@@ -27,6 +27,33 @@ def test_is_toc_entry_line_rejects_body_heading() -> None:
     assert not is_toc_entry_line("1. 技术方案")
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "一、服务方案1",
+        "3.东福行业独家亮点9",
+        "4百福得-员工福利平台概览12",
+        "第一卷供应商须知..........- 3 -",
+        "附件A——评分细则........................................................................ - 8 -",
+    ],
+)
+def test_is_toc_entry_line_glued_or_dotted(line: str) -> None:
+    assert is_toc_entry_line(line)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "三、 服务费一览表",
+        "1. 技术方案",
+        "ISO9001",
+        "2.兑换平台搭建方案",
+    ],
+)
+def test_is_toc_entry_line_rejects_body_like(line: str) -> None:
+    assert not is_toc_entry_line(line)
+
+
 @pytest.mark.skipif(
     not Path.home().joinpath(
         ".doc-chunk-viewer/uploads/61805407-9bde-4c4d-af88-f7dd91f1a661/【大纲】餐补标书大纲模板6.16.docx"

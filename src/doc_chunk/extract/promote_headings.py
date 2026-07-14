@@ -15,14 +15,28 @@ _COLON_LIST_BODY_RE = re.compile(r"^[^：:\n]{2,40}[：:].+")
 _CN_LOCAL_ENUM_PARA_RE = re.compile(r"^[一二三四五六七八九十]+、.+[：:]\s*$")
 _CN_ENUM_PREFIX_RE = re.compile(r"^[一二三四五六七八九十百零]+、[ \t]*")
 _TOC_PAGE_SUFFIX_RE = re.compile(r"[\t]\d+\s*$")
+_GLUED_PAGE_RE = re.compile(r"^(?P<title>.+?\D)(?P<page>\d{1,3})$")
+_DOTTED_LEADER_RE = re.compile(
+    r"^.+?[.\u2026\u3002]{2,}\s*-?\s*\d+\s*-?\s*$"
+)
+_TOC_LINE_MAX_LEN = 120
+_CN_OR_SECTION_RE = re.compile(r"[\u4e00-\u9fff]|(?:^[一二三四五六七八九十百零]+、)|(?:^\d+(?:\.\d+)*[.\s、])")
 
 
 def is_toc_entry_line(line: str) -> bool:
     """Table-of-contents row: title + tab + page number (must not become a section heading)."""
     stripped = line.strip()
-    if not stripped:
+    if not stripped or len(stripped) > _TOC_LINE_MAX_LEN:
         return False
-    return bool(_TOC_PAGE_SUFFIX_RE.search(stripped))
+    if _TOC_PAGE_SUFFIX_RE.search(stripped):
+        return True
+    if _DOTTED_LEADER_RE.match(stripped):
+        return True
+    glued = _GLUED_PAGE_RE.match(stripped)
+    if glued is None:
+        return False
+    title = glued.group("title").strip()
+    return bool(title) and _CN_OR_SECTION_RE.search(title) is not None
 
 
 class PromoteHeadingsState:
