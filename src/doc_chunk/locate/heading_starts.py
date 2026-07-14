@@ -16,6 +16,40 @@ _LEADING_GLUED_NUM_RE = re.compile(r"^\d+(?=[\u4e00-\u9fff])")
 _GLUED_CN_ENUM_SPACING_RE = re.compile(r"^([一二三四五六七八九十百零]+、)(?=[\u4e00-\u9fffA-Za-z])")
 _GLUED_DECIMAL_SPACING_RE = re.compile(r"^(\d+(?:\.\d+)*)(?=[\u4e00-\u9fffA-Za-z])")
 _GLUED_SINGLE_NUM_PUNCT_SPACING_RE = re.compile(r"^(\d+[、.．])(?=[\u4e00-\u9fffA-Za-z])")
+_TOC_HEADING_TITLES = {"目录", "总目录", "目 录"}
+
+
+def infer_body_start(content_md: str) -> int:
+    """First char offset where body section matching may begin."""
+    if not content_md:
+        return 0
+
+    pos = 0
+    last_toc_end: int | None = None
+    saw_toc_heading = False
+    for line in content_md.splitlines(keepends=True):
+        stripped = line.strip()
+        plain = stripped.lstrip("#").strip()
+        if plain in _TOC_HEADING_TITLES:
+            saw_toc_heading = True
+            last_toc_end = pos + len(line)
+            pos += len(line)
+            continue
+        if is_toc_entry_line(plain) or is_toc_entry_line(stripped):
+            last_toc_end = pos + len(line)
+            pos += len(line)
+            continue
+        if last_toc_end is not None and stripped:
+            if stripped.startswith("#") and plain not in _TOC_HEADING_TITLES:
+                return pos
+            if saw_toc_heading or last_toc_end is not None:
+                if stripped.startswith("#"):
+                    return pos
+        pos += len(line)
+
+    if last_toc_end is not None:
+        return last_toc_end
+    return 0
 
 
 def ensure_section_prefix_spacing(title: str) -> str:
@@ -56,9 +90,12 @@ def normalize_outline_title(text: str) -> str:
     return stripped.strip().lower()
 
 
-def parse_body_headings(content_md: str) -> list[Heading]:
+def parse_body_headings(content_md: str, *, body_start: int | None = None) -> list[Heading]:
+    start = infer_body_start(content_md) if body_start is None else body_start
     headings: list[Heading] = []
     for match in _HEADING_RE.finditer(content_md):
+        if match.start() < start:
+            continue
         title = match.group(2).strip()
         if is_toc_entry_line(title):
             continue
