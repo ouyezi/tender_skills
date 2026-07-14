@@ -16,6 +16,7 @@ _WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _NS = {"w": _WORD_NS}
 _TRAILING_PAGE_RE = re.compile(r"\s+\d+\s*$")
 _GLUED_PAGE_RE = re.compile(r"^(?P<title>.+?\D)(?P<page>\d{1,3})$")
+_HYPERLINK_BOOKMARK_RE = re.compile(r'HYPERLINK\s+\\l\s+"?(_Toc[\w]+)"?', re.IGNORECASE)
 
 
 def _join_toc_text_parts(parts: list[str]) -> str:
@@ -74,6 +75,14 @@ def extract_docx_toc_outline(source_path: Path) -> OutlineTree | None:
         if not title:
             continue
 
+        bookmark = None
+        for instr in paragraph.xpath(".//w:instrText", namespaces=_NS):
+            instr_text = "".join(instr.itertext())
+            match = _HYPERLINK_BOOKMARK_RE.search(instr_text)
+            if match:
+                bookmark = match.group(1)
+                break
+
         parent_id = None
         if level > 1:
             for parent_level in range(level - 1, 0, -1):
@@ -90,6 +99,7 @@ def extract_docx_toc_outline(source_path: Path) -> OutlineTree | None:
                 parent_id=parent_id,
                 sort_order=sort_order,
                 anchor=Anchor(block_index=sort_order),
+                source_refs=[f"toc_bookmark:{bookmark}"] if bookmark else [],
             )
         )
         sort_order += 1
