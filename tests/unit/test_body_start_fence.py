@@ -51,3 +51,22 @@ def test_build_node_heading_starts_uses_body_not_toc() -> None:
     assert starts["n1"] == GLUED_TOC_MD.index("# 一、服务方案\n")
     assert starts["n2"] == GLUED_TOC_MD.index("## （一）服务大纲\n")
     assert starts["n1"] >= infer_body_start(GLUED_TOC_MD)
+
+
+def test_infer_body_start_ignores_mid_document_glued_lines() -> None:
+    md = (
+        "# 第一章\n\n"
+        "正文\n\n"
+        "一、服务方案1\n\n"
+        "# 第二章\n\n"
+        "更多\n"
+    )
+    assert infer_body_start(md) == 0
+    headings = parse_body_headings(md)
+    assert any(h.title.startswith("第一章") for h in headings)
+
+
+def test_parse_body_headings_all_after_body_start() -> None:
+    start = infer_body_start(GLUED_TOC_MD)
+    for h in parse_body_headings(GLUED_TOC_MD):
+        assert h.char_start >= start

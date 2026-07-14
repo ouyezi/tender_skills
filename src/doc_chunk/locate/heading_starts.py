@@ -26,25 +26,41 @@ def infer_body_start(content_md: str) -> int:
 
     pos = 0
     last_toc_end: int | None = None
-    saw_toc_heading = False
+    in_front_toc = False
+
     for line in content_md.splitlines(keepends=True):
         stripped = line.strip()
         plain = stripped.lstrip("#").strip()
+
         if plain in _TOC_HEADING_TITLES:
-            saw_toc_heading = True
+            in_front_toc = True
             last_toc_end = pos + len(line)
             pos += len(line)
             continue
-        if is_toc_entry_line(plain) or is_toc_entry_line(stripped):
-            last_toc_end = pos + len(line)
-            pos += len(line)
-            continue
-        if last_toc_end is not None and stripped:
-            if stripped.startswith("#") and plain not in _TOC_HEADING_TITLES:
+
+        is_toc_line = is_toc_entry_line(plain) or is_toc_entry_line(stripped)
+        is_body_heading = (
+            stripped.startswith("#")
+            and plain not in _TOC_HEADING_TITLES
+            and not is_toc_line
+        )
+
+        if is_body_heading:
+            if in_front_toc or last_toc_end is not None:
                 return pos
-            if saw_toc_heading or last_toc_end is not None:
-                if stripped.startswith("#"):
-                    return pos
+            return 0
+
+        if is_toc_line and not in_front_toc and last_toc_end is None:
+            in_front_toc = True
+            last_toc_end = pos + len(line)
+            pos += len(line)
+            continue
+
+        if is_toc_line and in_front_toc:
+            last_toc_end = pos + len(line)
+            pos += len(line)
+            continue
+
         pos += len(line)
 
     if last_toc_end is not None:
