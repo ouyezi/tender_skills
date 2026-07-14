@@ -24,7 +24,7 @@ _CN_OR_SECTION_RE = re.compile(r"[\u4e00-\u9fff]|(?:^[一二三四五六七八�
 
 
 def is_toc_entry_line(line: str) -> bool:
-    """Table-of-contents row: title + tab + page number (must not become a section heading)."""
+    """TOC row: tab+page, glued page, or dotted leaders + page (must not become a section heading)."""
     stripped = line.strip()
     if not stripped or len(stripped) > _TOC_LINE_MAX_LEN:
         return False
