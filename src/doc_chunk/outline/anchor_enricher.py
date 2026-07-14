@@ -95,7 +95,18 @@ def enrich_outline_anchors(
         needs_review = node.needs_review
         idx: int | None = anchor.block_index
 
-        if node.node_id in heading_starts:
+        bookmark_locked = any(ref.startswith("toc_bookmark:") for ref in node.source_refs) and (
+            anchor.block_index is not None and anchor.block_index in block_by_index
+        )
+
+        if bookmark_locked:
+            idx = anchor.block_index
+            block = block_by_index[idx]
+            anchor.block_index = idx
+            anchor.block_start = idx
+            anchor.char_start = block.char_start
+            anchor.char_end = block.char_end
+        elif node.node_id in heading_starts:
             char_start = heading_starts[node.node_id]
             block = _find_block_for_char_start(blocks, char_start)
             if block is not None:
