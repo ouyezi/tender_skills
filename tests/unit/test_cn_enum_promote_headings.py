@@ -52,6 +52,35 @@ def test_promote_headings_auto_promotes_cn_enum(tmp_path: Path) -> None:
     assert by_title["1.1 企业介绍"].parent_id == by_title["一、企业简介及资质"].node_id
 
 
+def test_promote_after_decimal_section_keeps_cn_enum_as_paragraph(tmp_path: Path) -> None:
+    """Under 7.2-style subsections,「一、…」is local content, not a new L1 chapter."""
+    docx_path = tmp_path / "decimal_then_cn_enum.docx"
+    doc = Document()
+    heading = doc.add_paragraph("7.2丰富的商品资源")
+    heading.style = doc.styles["Heading 4"]
+    doc.add_paragraph("一、部分合作品牌展示（持续上新）")
+    doc.add_paragraph("品牌展示正文。")
+    doc.save(docx_path)
+
+    workspace = tmp_path / "ws"
+    extract_file(docx_path, workspace, overwrite=True, promote_headings="auto")
+    content_md = (workspace / "content.md").read_text(encoding="utf-8")
+
+    assert "#### 7.2丰富的商品资源" in content_md
+    assert "# 一、部分合作品牌展示（持续上新）" not in content_md
+    assert "一、部分合作品牌展示（持续上新）" in content_md
+
+    from doc_chunk.locate.heading_starts import section_end_by_heading
+    import re
+
+    match = re.search(r"^#### 7\.2丰富的商品资源.*$", content_md, re.MULTILINE)
+    assert match is not None
+    end = section_end_by_heading(content_md, match.start(), 4)
+    section = content_md[match.start() : end]
+    assert "一、部分合作品牌展示（持续上新）" in section
+    assert "品牌展示正文" in section
+
+
 def test_promote_headings_keeps_local_cn_enum_series_as_paragraphs(tmp_path: Path) -> None:
     docx_path = tmp_path / "local_enum_series.docx"
     doc = Document()

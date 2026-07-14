@@ -191,6 +191,7 @@ def extract_docx(
                     level = _resolve_paragraph_heading_level(paragraph, text)
                     if level is not None:
                         acc.add_heading(level, text)
+                        promote_state.note_heading(level, text)
                     elif promote_headings == "auto":
                         parsed = promote_state.parse(text)
                         if parsed is not None:
