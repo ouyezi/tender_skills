@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from docx import Document
@@ -71,7 +72,6 @@ def test_promote_after_decimal_section_keeps_cn_enum_as_paragraph(tmp_path: Path
     assert "一、部分合作品牌展示（持续上新）" in content_md
 
     from doc_chunk.locate.heading_starts import section_end_by_heading
-    import re
 
     match = re.search(r"^#### 7\.2丰富的商品资源.*$", content_md, re.MULTILINE)
     assert match is not None
@@ -79,6 +79,40 @@ def test_promote_after_decimal_section_keeps_cn_enum_as_paragraph(tmp_path: Path
     section = content_md[match.start() : end]
     assert "一、部分合作品牌展示（持续上新）" in section
     assert "品牌展示正文" in section
+
+
+def test_outline_lvl_paren_section_ends_decimal_subsection(tmp_path: Path) -> None:
+    """Word outlineLvl「（二）…」must become a heading so 7.2 does not swallow following chapters."""
+    from docx.oxml.ns import qn
+
+    docx_path = tmp_path / "paren_outline.docx"
+    doc = Document()
+    h72 = doc.add_paragraph("7.2丰富的商品资源")
+    h72.style = doc.styles["Heading 4"]
+    doc.add_paragraph("一、部分合作品牌展示（持续上新）")
+    doc.add_paragraph("品牌图与保供函。")
+    sibling = doc.add_paragraph("（二）服务团队及服务能力")
+    p_pr = sibling._element.get_or_add_pPr()
+    outline = p_pr.makeelement(qn("w:outlineLvl"))
+    outline.set(qn("w:val"), "1")
+    p_pr.append(outline)
+    doc.add_paragraph("团队介绍正文。")
+    doc.save(docx_path)
+
+    workspace = tmp_path / "ws"
+    extract_file(docx_path, workspace, overwrite=True, promote_headings="auto")
+    content_md = (workspace / "content.md").read_text(encoding="utf-8")
+
+    assert re.search(r"^#{1,8}[ \t]+（二）服务团队及服务能力\s*$", content_md, re.MULTILINE)
+    match = re.search(r"^#### 7\.2丰富的商品资源.*$", content_md, re.MULTILINE)
+    assert match is not None
+    from doc_chunk.locate.heading_starts import section_end_by_heading
+
+    end = section_end_by_heading(content_md, match.start(), 4)
+    section = content_md[match.start() : end]
+    assert "品牌图与保供函" in section
+    assert "（二）服务团队及服务能力" not in section
+    assert "团队介绍正文" not in section
 
 
 def test_promote_headings_keeps_local_cn_enum_series_as_paragraphs(tmp_path: Path) -> None:

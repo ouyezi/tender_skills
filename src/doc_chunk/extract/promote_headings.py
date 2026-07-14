@@ -4,6 +4,7 @@ import re
 
 _CN_CHAPTER_RE = re.compile(r"^第[一二三四五六七八九十百千0-9]+[章节编部分卷篇]\s+(.+)$")
 _CN_ENUM_RE = re.compile(r"^([一二三四五六七八九十百零]+)、(.+)$")
+_CN_PAREN_ENUM_RE = re.compile(r"^[（(]([一二三四五六七八九十百零]+)[）)]\s*(.+)$")
 _CN_LIST_ITEM_RE = re.compile(r"^\d+[、]")
 _NUM_HEADING_RE = re.compile(
     r"^(\d+(?:\.\d+)+)([^\d].+)$|"
@@ -97,6 +98,18 @@ def is_cn_enum_chapter_line(line: str) -> bool:
     return bool(_CN_ENUM_RE.match(line.strip()))
 
 
+def is_cn_paren_section_title(line: str) -> bool:
+    """Short「（一）服务大纲」/「（二）服务团队」section labels (often Word outlineLvl)."""
+    stripped = line.strip()
+    if not stripped or len(stripped) > _CN_ENUM_MAX_LEN:
+        return False
+    match = _CN_PAREN_ENUM_RE.match(stripped)
+    if match is None:
+        return False
+    body = match.group(2).strip()
+    return bool(body) and not body.endswith(("：", ":"))
+
+
 def is_list_body_line(line: str) -> bool:
     """Plain-text list/bullet lines that must not become section headings."""
     stripped = line.strip()
@@ -110,7 +123,7 @@ def is_list_body_line(line: str) -> bool:
 
 
 def parse_content_heading_line(line: str) -> tuple[int, str] | None:
-    """Detect numbered / 第X章 / X、 style headings in plain text (no Word Heading style)."""
+    """Detect numbered / 第X章 / X、 / （N） style headings in plain text (no Word Heading style)."""
     stripped = line.strip()
     if not stripped or len(stripped) > 120:
         return None
@@ -128,6 +141,9 @@ def parse_content_heading_line(line: str) -> tuple[int, str] | None:
             return None
         if len(stripped) > _CN_ENUM_MAX_LEN:
             return None
+        return 1, stripped
+    if is_cn_paren_section_title(stripped):
+        # Level 1 by default; Word outlineLvl overrides via extractor when present.
         return 1, stripped
     numeric = _NUM_HEADING_RE.match(stripped)
     if numeric:
