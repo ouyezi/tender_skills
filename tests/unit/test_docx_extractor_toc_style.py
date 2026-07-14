@@ -73,3 +73,13 @@ def test_extract_skips_toc_style_as_heading(tmp_path: Path) -> None:
     assert "# 一、服务方案1" not in md
     assert "一、服务方案1" in md
     assert md.count("# 一、服务方案") == 1
+
+
+def test_extract_skips_toc_style_with_promote_headings_auto(tmp_path: Path) -> None:
+    src = _docx_with_toc_and_body(tmp_path)
+    ws = tmp_path / "ws-auto"
+    extract_file(src, ws, overwrite=True, promote_headings="auto")
+    md = (ws / "content.md").read_text(encoding="utf-8")
+    assert "# 一、服务方案1" not in md
+    assert "一、服务方案1" in md
+    assert md.count("# 一、服务方案") == 1

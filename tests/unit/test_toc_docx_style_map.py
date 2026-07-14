@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from doc_chunk.outline.toc_docx import build_toc_style_level_map
+from doc_chunk.outline.toc_styles import build_toc_style_level_map
 
 SAMPLE_STYLES_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
