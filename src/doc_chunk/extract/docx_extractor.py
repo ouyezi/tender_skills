@@ -17,8 +17,20 @@ from doc_chunk.extract.table_sidecar import TableSidecarWriter
 from doc_chunk.extract.table_slice import extract_table_slice
 from doc_chunk.models.document import ExtractResult
 from doc_chunk.models.images_manifest import ImageManifestEntry, ImagesManifest
+from doc_chunk.outline.toc_styles import load_toc_style_map_from_docx, resolve_toc_level
 from doc_chunk.table.assets import collect_table_assets
 from doc_chunk.workspace.layout import OutputWorkspace
+
+
+def _paragraph_style_id(paragraph: DocxParagraph) -> str:
+    p_pr = paragraph._element.pPr
+    if p_pr is None:
+        return ""
+    p_style = p_pr.find(qn("w:pStyle"))
+    if p_style is None:
+        return ""
+    raw = p_style.get(qn("w:val"))
+    return raw.strip() if raw else ""
 
 
 def _heading_level_from_style(style_name: str) -> int | None:
@@ -153,6 +165,7 @@ def extract_docx(
     *,
     promote_headings: Literal["off", "auto"] = "off",
 ) -> ExtractResult:
+    toc_style_map = load_toc_style_map_from_docx(path)
     doc = DocxDocument(path)
     numbering = DocxNumberingResolver(doc)
     acc = BlockAccumulator()
@@ -171,17 +184,21 @@ def extract_docx(
             if text and list_prefix:
                 text = merge_list_prefix(text, list_prefix)
             if text:
-                level = _resolve_paragraph_heading_level(paragraph, text)
-                if level is not None:
-                    acc.add_heading(level, text)
-                elif promote_headings == "auto":
-                    parsed = promote_state.parse(text)
-                    if parsed is not None:
-                        acc.add_heading(parsed[0], parsed[1])
+                style_id = _paragraph_style_id(paragraph)
+                if resolve_toc_level(style_id, toc_style_map) is not None:
+                    acc.add_paragraph(text)
+                else:
+                    level = _resolve_paragraph_heading_level(paragraph, text)
+                    if level is not None:
+                        acc.add_heading(level, text)
+                    elif promote_headings == "auto":
+                        parsed = promote_state.parse(text)
+                        if parsed is not None:
+                            acc.add_heading(parsed[0], parsed[1])
+                        else:
+                            acc.add_paragraph(text)
                     else:
                         acc.add_paragraph(text)
-                else:
-                    acc.add_paragraph(text)
             for relationship_id, image_part in _docx_paragraph_image_embeds(paragraph, doc):
                 image_count = _register_docx_image(
                     relationship_id=relationship_id,
