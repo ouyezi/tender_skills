@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- DOCX TOC 粘连页码 / toc 样式场景下，outline anchor 不再落在文首目录区：书签优先定位 + `body_start` 围栏 + 扩展 `is_toc_entry_line`；提取阶段 toc 样式不再写成 Markdown 标题。已解析文档需重跑流水线。
+
 ## [0.3.0] - 2026-07-06
 
 ### Added
